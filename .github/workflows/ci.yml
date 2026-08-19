@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contract:
+    name: 契约校验 (OpenAPI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: 校验 OpenAPI 契约
+        run: python contracts/openapi/validate.py
+
+  backend:
+    name: 后端 (编译 + 单元测试)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: 后端编译与单元测试（不含远程 MySQL 集成）
+        run: |
+          cd backend
+          mvn -B -q test \
+            -Dtest='TimeClockApplicationTests' \
+            -DfailIfNoTests=true
+        env:
+          TC_MYSQL_TEST_DATABASE: time_clock_test
+
+  backend-integration:
+    name: 后端数据库集成测试 (远程 MySQL 8)
+    runs-on: ubuntu-latest
+    # 需要协调者提供的远程 MySQL 8 连接，作为仓库 secret 注入
+    env:
+      TC_MYSQL_HOST: ${{ secrets.TC_MYSQL_HOST }}
+      TC_MYSQL_PORT: ${{ secrets.TC_MYSQL_PORT }}
+      TC_MYSQL_USERNAME: ${{ secrets.TC_MYSQL_USERNAME }}
+      TC_MYSQL_PASSWORD: ${{ secrets.TC_MYSQL_PASSWORD }}
+      TC_MYSQL_DATABASE: time_clock
+      TC_MYSQL_TEST_DATABASE: time_clock_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: 重建测试库
+        run: |
+          mysql -h "$TC_MYSQL_HOST" -P "$TC_MYSQL_PORT" \
+            -u "$TC_MYSQL_USERNAME" -p"$TC_MYSQL_PASSWORD" \
+            -e "DROP DATABASE IF EXISTS time_clock_test; CREATE DATABASE time_clock_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+      - name: 数据库集成测试
+        run: |
+          cd backend
+          mvn -B -q test -Dtest='FlywayMigrationTests'
+
+  frontend:
+    name: 前端 (类型 + 单元/组件 + 构建)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: cd frontend && npm ci
+      - name: 类型检查
+        run: cd frontend && npm run typecheck
+      - name: 单元/组件测试
+        run: cd frontend && npm test
+      - name: 生产构建
+        run: cd frontend && npm run build
+
+  e2e:
+    name: 前端 E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: cd frontend && npm ci
+      - name: 安装 Playwright Chromium
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: 启动预览并运行 E2E
+        run: |
+          cd frontend
+          npm run build
+          npx playwright test
