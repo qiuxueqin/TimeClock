@@ -25,7 +25,7 @@ V1.0 是可部署的 Web 服务，覆盖注册登录、多端同步、任务与�
 | 文件解析 | Apache PDFBox 3.x、Apache POI 5.x、OpenCSV | 分别解析 PDF 文本层、DOCX、CSV。 |
 | 后台任务 | MySQL `background_jobs` + Spring `@Scheduled` | 以持久化任务和重试替代消息队列。 |
 | API 文档 | springdoc-openapi（开发/测试环境） | 让 Web 前端和后端共享接口契约。 |
-| 测试 | JUnit 5、Mockito、Testcontainers | 覆盖领域规则、事务和数据库约束。 |
+| 测试 | JUnit 5、Mockito、远程 MySQL 8 实例 | 覆盖领域规则、事务和数据库约束；连接信息仅通过环境变量注入，不使用 Testcontainers 或本地 MySQL。 |
 | 健康检查 | Spring Boot Actuator + Logback | 保持最低可观测性。 |
 | 部署 | Docker Compose | 单服务器运行 `app + mysql`，简单可复现。 |
 
@@ -143,7 +143,7 @@ sequenceDiagram
 
 1. 上传完成后，在创建 `import_batches` 的同一事务中写入 `background_jobs`，类型为 `IMPORT_PARSE`。
 2. `@Scheduled(fixedDelay = 5000)` 每 5 秒以 `SELECT ... FOR UPDATE SKIP LOCKED` 领取一条到期任务。
-3. 解析成功写入 `import_candidates` 并标记 `PARSED`；失败保存受控错误摘要，指数退避最多重试 3 次。
+3. 解析成功写入 `import_candidates` 并标记 `REVIEW_READY`；失败保存受控错误摘要，指数退避最多重试 3 次。
 4. 三次失败后标记 `FAILED`，用户可查看原因并重新上传。
 5. PDF 仅支持可提取文本层；扫描 PDF 和图片只保存资料，不做 OCR。
 6. 解析限制：最大 500 页、最大文本长度、单任务超时、受控内存。加密或损坏文件快速失败。
