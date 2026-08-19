@@ -1,0 +1,2818 @@
+# 学习打卡系统 V1.0 OpenAPI 基线契约（S0-API-01 交付物）
+#
+# 本文件由 S0-API-01「建立 OpenAPI 基线」生成。只规定接口契约（路径、方法、
+# 请求/响应 DTO、错误码、安全要求），不提供实现代码。
+# 完成标准：前后端可据此各自编写测试，无需等待对方实现。
+# 校验方式：OpenAPI 校验工具（语法/引用/必填/重复 operation/安全声明）。
+#
+# 全局约定（与实施计划 §3.2 一致）：
+#   - 前缀 /api/v1，此处 openapi 的 servers 已含前缀
+#   - 成功响应包 { data, requestId }，失败 { error: { code, message }, requestId }
+#   - 日期 YYYY-MM-DD，不 UTC 重解释；时区 IANA；时间戳带偏移
+#   - 所有写请求（POST/PUT/PATCH/DELETE）需 CSRF；防重复写需 Idempotency-Key
+#   - 编辑携带 If-Match-Version；版本不匹配 → 409
+openapi: 3.1.0
+info:
+  title: 学习打卡系统 API
+  version: 1.0.0
+  description: >
+    学习打卡系统 V1.0 契约。状态枚举、转换与时间规则见
+    `memory-bank/state-machine-and-time-rules-V1.0.md`。需求与决策追踪见
+    `memory-bank/requirements-tracking-V1.0.md`。
+servers:
+  - url: /api/v1
+
+tags:
+  - name: auth
+  - name: user
+  - name: tasks
+  - name: items
+  - name: submissions
+  - name: checkins
+  - name: dashboard
+  - name: files
+  - name: imports
+  - name: export
+
+paths:
+  # ============ 认证（S1） ============
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 注册
+      operationId: register
+      description: 规范化邮箱+密码注册。Argon2id 哈希，邮箱唯一。单实例限流（5 失败/15 分/IP+邮箱）。写操作需 CSRF（token 经 GET /auth/csrf 获取，注册前即可获取）。
+      security:
+        - csrf: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: 邮箱重复。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 登录
+      operationId: login
+      description: 校验凭据，签发 Session Cookie（HttpOnly/Secure/SameSite=Lax）。失败统一消息并限流。写操作需 CSRF（token 经 GET /auth/csrf 获取）。
+      security:
+        - csrf: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LoginResponse'
+                  requestId:
+                    type: string
+        '401':
+          description: 凭据错误，统一消息不暴露邮箱是否存在。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出
+      operationId: logout
+      description: 撤销服务端当前会话并清除 Cookie。仅撤销当前设备会话。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 当前用户
+      operationId: getMe
+      description: 返回当前用户；验证会话有效与撤销状态。401=会话失效。
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 当前用户。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/csrf:
+    get:
+      tags: [auth]
+      summary: 获取 CSRF Token
+      operationId: getCsrf
+      description: 返回 CSRF Token，前端仅写入内存；写请求放入 X-CSRF-Token。仅需会话（登录前也可获取用于登录/注册的 CSRF）。
+      responses:
+        '200':
+          description: CSRF token。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CsrfToken'
+                  requestId:
+                    type: string
+
+  # ============ 用户设置（S2） ============
+  /settings:
+    get:
+      tags: [user]
+      summary: 读取当前用户设置
+      operationId: getSettings
+      description: 默认时区与逾期提示显示偏好。REQ-USER-01。
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 用户设置。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserSettings'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [user]
+      summary: 更新当前用户设置
+      operationId: updateSettings
+      description: 只接受有效 IANA 时区；逾期提示偏好仅控制界面展示，不改变领域状态。不提供补打窗口配置。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserSettings'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 任务（S2） ============
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: 任务列表
+      operationId: listTasks
+      description: 分页列表，默认排除软删除；支持 status/type 筛选；稳定排序。不变量 1 归属校验。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TaskStatus'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/TaskType'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 任务分页。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskPage'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [tasks]
+      summary: 创建任务
+      operationId: createTask
+      description: 创建两类任务。清单默认 draft；习惯配置有效时可直接 active。创建与启用分离（S2-BE-01）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateRequest'
+      responses:
+        '201':
+          description: 任务创建成功。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskView'
+                  requestId:
+                    type: string
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: 任务详情
+      operationId: getTask
+      description: 含统计与派生 ended 状态。归属校验，他人任务 403/404 不泄漏存在性。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 任务详情。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 不存在或无权访问（不区分）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+    patch:
+      tags: [tasks]
+      summary: 编辑任务
+      operationId: updateTask
+      description: 携带 If-Match-Version；旧版本 409 并返回最新摘要。频率/目标/时区变更只对未开始计划生效（DEC-07）。启用后禁止类型切换（DEC-05）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [tasks]
+      summary: 删除任务（软删除）
+      operationId: deleteTask
+      description: 二次确认由前端收集；软删除，立即隐藏，内部保留 30 天（DEC-21）。有历史时返回归档建议摘要。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          description: 有历史记录，建议归档。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/enable:
+    post:
+      tags: [tasks]
+      summary: 启用任务
+      operationId: enableTask
+      description: 状态转换 draft→active。清单须 ≥1 已确认条目且配置有效（DEC-04）；无条目返回 422。习惯有效直接 active。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/pause:
+    post:
+      tags: [tasks]
+      summary: 暂停任务
+      operationId: pauseTask
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/resume:
+    post:
+      tags: [tasks]
+      summary: 恢复任务
+      operationId: resumeTask
+      description: 恢复后从下一合格计划日继续，不回补暂停期。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/archive:
+    post:
+      tags: [tasks]
+      summary: 归档任务
+      operationId: archiveTask
+      description: 归档只读，V1.0 无恢复。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 学习条目（S3） ============
+  /tasks/{taskId}/items:
+    get:
+      tags: [items]
+      summary: 条目列表
+      operationId: listItems
+      description: 全量条目分页，按 sortOrder 升序稳定排序；含已归档（可筛）。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ItemStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 条目分页。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ItemPage'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [items]
+      summary: 手工新增条目
+      operationId: createItem
+      description: 自动分配稳定序号；校验标题必填、链接格式；校验任务为清单型、归属、状态。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemCreateRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/items/paste-preview:
+    post:
+      tags: [items]
+      summary: 批量粘贴预览
+      operationId: pastePreview
+      description: 每行一条目；预览返回总数/有效/错误行。确认前不写正式条目。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PastePreviewRequest'
+      responses:
+        '200':
+          description: 预览结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PastePreviewResponse'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/items/paste-confirm:
+    post:
+      tags: [items]
+      summary: 确认批量粘贴
+      operationId: pasteConfirm
+      description: 追加到既有条目之后，序号唯一。幂等键防重复确认。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasteConfirmRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /items/{itemId}:
+    get:
+      tags: [items]
+      summary: 条目详情
+      operationId: getItem
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 条目详情。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ItemView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [items]
+      summary: 编辑条目
+      operationId: updateItem
+      description: 有历史/已完成条目禁止硬删除，编辑需版本号。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [items]
+      summary: 归档条目（软）
+      operationId: archiveItem
+      description: 有历史/已完成条目改为归档而非硬删除（S3-BE-01）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 今日计划 / 分配（S3） ============
+  /tasks/{taskId}/today-items:
+    get:
+      tags: [items]
+      summary: 今日计划条目
+      operationId: getTodayItems
+      description: 惰性创建当日打卡与分配；目标按剩余量缩减；未完成顺延优先。返回归属是否计入今日。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 今日计划。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TodayItemsResponse'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 题解（S4） ============
+  /items/{itemId}/submission:
+    get:
+      tags: [submissions]
+      summary: 读取当前题解
+      operationId: getSubmission
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 当前题解。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubmissionView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [submissions]
+      summary: 保存/提交题解
+      operationId: saveSubmission
+      description: 保存草稿允许空内容，不改变完成状态（不变量 5）。携带版本号，冲突 409。历史版本可查。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match-Version
+          in: header
+          required: false
+          schema:
+            type: integer
+          description: 草稿首次保存可省略；已有版本必填。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionSaveRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /items/{itemId}/submission/history:
+    get:
+      tags: [submissions]
+      summary: 题解历史版本
+      operationId: getSubmissionHistory
+      description: 历史版本不可覆盖（S4-DB-01）；按用户和条目授权查询。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 题解历史。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubmissionHistory'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 完成 / 撤销（S4） ============
+  /items/{itemId}/complete:
+    post:
+      tags: [submissions]
+      summary: 完成本题
+      operationId: completeItem
+      description: 要求有效题解（DEC-08）；幂等键防重复；completionContext 区分 today/early（DEC-11）；达标自动完成打卡（DEC-09），前端不发第二次写请求。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteRequest'
+      responses:
+        '200':
+          description: 完成结果与进度。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CompleteResponse'
+                  requestId:
+                    type: string
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /items/{itemId}/reopen:
+    post:
+      tags: [submissions]
+      summary: 撤销完成
+      operationId: reopenItem
+      description: 幂等键；降低对应打卡完成数，不达标时 completed→partial 并局部重算连续（DEC-23）；保留题解与历史版本。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReopenRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 打卡（S5/S6） ============
+  /tasks/{taskId}/checkins/{date}:
+    get:
+      tags: [checkins]
+      summary: 指定日期打卡
+      operationId: getCheckin
+      description: 返回该日期计划与进度。无计划日不创建。归属校验。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+          description: YYYY-MM-DD，不 UTC 重解释。
+      responses:
+        '200':
+          description: 打卡视图（可空）。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CheckinView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/checkins/{date}/complete:
+    post:
+      tags: [checkins]
+      summary: 习惯型打卡
+      operationId: completeHabitCheckin
+      description: 无目标提交即完成；有目标实际量达标→completed，低于→partial；备注必填服务端强制（S5-BE-01）。仅习惯任务。幂等键。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitCheckinRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/checkins/{date}/edit:
+    patch:
+      tags: [checkins]
+      summary: 编辑当日习惯打卡
+      operationId: editHabitCheckin
+      description: 仅今天可普通编辑（S5-BE-02）；历史日期走补打。版本号+幂等键。补打记录不可编辑（DEC-24）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: If-Match-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HabitCheckinEditRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/checkins/{date}/makeup:
+    post:
+      tags: [checkins]
+      summary: 补打
+      operationId: makeup
+      description: 窗口=过去 3 自然日（任务时区，不含今天）；原因必填；清单/习惯各按规则。makeup 不计连续、不可逆（DEC-12/24）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MakeupRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 今日总览（S5） ============
+  /dashboard/today:
+    get:
+      tags: [dashboard]
+      summary: 今日总览
+      operationId: dashboardToday
+      description: 按各任务时区计算今日计划；混合清单/习惯/暂停/结束；连续摘要；站内提示。状态优先级 DEC-15。
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: 今日总览。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DashboardTodayResponse'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 日历 / 统计（S6） ============
+  /calendar:
+    get:
+      tags: [checkins]
+      summary: 月历
+      operationId: calendarMonth
+      description: 按月返回全部或单任务打卡；筛选；状态区分 completed/partial/missed/makeup/noPlan。不泄漏他人数据或完整敏感题解。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}$'
+        - name: taskId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, completed, missed, makeup, partial]
+      responses:
+        '200':
+          description: 月历。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CalendarMonthResponse'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /tasks/{taskId}/stats:
+    get:
+      tags: [checkins]
+      summary: 任务统计
+      operationId: getTaskStats
+      description: 连续天数、清单总进度/预计完成日期、习惯累计/月完成率。归属校验。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 任务统计。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TaskStats'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 文件（S4/S7） ============
+  /tasks/{taskId}/files:
+    post:
+      tags: [files]
+      summary: 上传文件
+      operationId: uploadFile
+      description: multipart/form-data。题解图片与源资料（PDF/DOCX/CSV/图片）。校验扩展名/MIME/魔数/大小（50MB，题解图 10MB，最多 9 张）。服务端重算 SHA-256；同任务同哈希返回既有批次。私有文件。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: 上传源资料创建批次时建议幂等。
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/FilePurpose'
+        - name: itemId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: purpose=solution_image 时可选，用于绑定。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: 上传结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FileUploadResponse'
+                  requestId:
+                    type: string
+        '413':
+          description: 文件过大。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '415':
+          description: 类型/MIME/魔数不符。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /files/{fileId}/download:
+    get:
+      tags: [files]
+      summary: 私有文件下载
+      operationId: downloadFile
+      description: 校验当前用户与资源归属；流式返回；不暴露磁盘路径。题解图片、源资料均经此鉴权访问。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 不存在或无权访问。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+  /items/{itemId}/submission/images/{fileId}/bind:
+    post:
+      tags: [submissions]
+      summary: 绑定题解图片
+      operationId: bindSubmissionImage
+      description: 上传成功后才能绑定；最多 9 张；解绑不影响其他题解。不改变完成状态。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /items/{itemId}/submission/images/{fileId}/unbind:
+    delete:
+      tags: [submissions]
+      summary: 解绑题解图片
+      operationId: unbindSubmissionImage
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============ 导入（S7/S8） ============
+  /imports/{batchId}:
+    get:
+      tags: [imports]
+      summary: 导入批次状态
+      operationId: getImportBatch
+      description: 前端按状态轮询；REVIEW_READY/COMPLETED/FAILED 终态停止。状态 DEC-16。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 批次状态。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportBatchView'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates:
+    get:
+      tags: [imports]
+      summary: 候选题列表
+      operationId: listCandidates
+      description: 分页+稳定排序；含统计；低置信度需显式确认。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: lowConfidence
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 候选分页。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ImportCandidatePage'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates/stats:
+    get:
+      tags: [imports]
+      summary: 候选统计
+      operationId: candidateStats
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 候选统计。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CandidateStats'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates/{candidateId}:
+    patch:
+      tags: [imports]
+      summary: 编辑候选
+      operationId: updateCandidate
+      description: 版本号；冲突 409。编辑不覆盖原始片段（rawFragment 保留）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateUpdateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [imports]
+      summary: 删除候选
+      operationId: deleteCandidate
+      description: 仅删除候选，不影响正式条目。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates/{candidateId}/split:
+    post:
+      tags: [imports]
+      summary: 拆分候选
+      operationId: splitCandidate
+      description: 一条拆为两条，有来源关系与稳定顺序。版本号。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateSplitRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates/{candidateId}/merge:
+    post:
+      tags: [imports]
+      summary: 合并候选
+      operationId: mergeCandidate
+      description: 连续候选合并成一条；保留所选内容与来源页范围。版本号。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateMergeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/candidates/{candidateId}/action:
+    patch:
+      tags: [imports]
+      summary: 设置候选重复处理动作
+      operationId: setCandidateAction
+      description: 三种动作：skip/keep_new/merge；默认 skip；无覆盖（DEC-18）。merge 需目标条目（同任务）。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match-Version
+          in: header
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateActionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /imports/{batchId}/confirm:
+    post:
+      tags: [imports]
+      summary: 确认入库
+      operationId: confirmImport
+      description: 幂等键；事务内执行新增/跳过/合并、统计、审计；批次 CONFIRMING→COMPLETED。低置信度未确认或候选版本过期无副作用。
+      security:
+        - sessionCookie: []
+        - csrf: []
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmImportRequest'
+      responses:
+        '200':
+          description: 确认结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ConfirmImportResponse'
+                  requestId:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # ============ 导出（S9） ============
+  /export:
+    get:
+      tags: [export]
+      summary: 导出学习数据
+      operationId: exportData
+      description: CSV/JSON。仅当前用户数据；含任务、条目、题解文字全文、打卡记录；不内嵌图片/原文件，不泄漏内部路径、密码、Session、CSRF、内部哈希（DEC-20）。
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/ExportFormat'
+      responses:
+        '200':
+          description: 导出文件流（CSV 或 JSON，带 Content-Disposition）。
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION_ID
+      description: HttpOnly、Secure、SameSite=Lax 会话 Cookie。由后端签发。
+    csrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: 所有写请求必须携带，token 从 GET /auth/csrf 获取，仅在内存。
+  schemas:
+    # ============ 通用响应包装 ============
+    EnvelopeSuccess:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data: {}
+        requestId:
+          type: string
+          description: 请求 ID，贯穿日志，用于故障定位。
+    EnvelopeError:
+      type: object
+      additionalProperties: false
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: 稳定错误码，前端据此分类，不解析 message 文本。
+            message:
+              type: string
+              description: 用户可理解的错误信息。
+        requestId:
+          type: string
+
+    # ============ 认证 ============
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, confirmPassword]
+      properties:
+        email:
+          type: string
+          format: email
+          description: 规范化邮箱，唯一。DEC-01。
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 明文密码，服务端 Argon2id 哈希后存储。
+        confirmPassword:
+          type: string
+          description: 与 password 一致。
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserView'
+    UserView:
+      type: object
+      additionalProperties: false
+      required: [id, email, timezone, overdueReminderVisible]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        timezone:
+          type: string
+          description: IANA 时区名，如 Asia/Shanghai。
+        overdueReminderVisible:
+          type: boolean
+          description: 站内逾期提示显示偏好。REQ-USER-01。
+    CsrfToken:
+      type: object
+      additionalProperties: false
+      required: [csrfToken]
+      properties:
+        csrfToken:
+          type: string
+          description: 一次性/可刷新 CSRF token，仅写入内存，不持久化前端存储。
+
+    # ============ 用户设置 ============
+    UserSettings:
+      type: object
+      additionalProperties: false
+      required: [timezone, overdueReminderVisible]
+      properties:
+        timezone:
+          type: string
+          description: IANA 时区，作为新建任务默认值。DEC-14。
+        overdueReminderVisible:
+          type: boolean
+
+    # ============ 任务 ============
+    TaskType:
+      type: string
+      enum: [checklist, habit]
+    TaskStatus:
+      type: string
+      enum: [draft, active, paused, archived]
+      description: 结束状态由 endDate 派生，不新增持久值。
+    ScheduleType:
+      type: string
+      enum: [daily, weekly]
+    TaskCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type, scheduleType, startDate, timezone]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 500
+        type:
+          $ref: '#/components/schemas/TaskType'
+        startDate:
+          type: string
+          format: date
+          description: YYYY-MM-DD，默认今天。
+        endDate:
+          type: string
+          format: date
+          description: 可选，不早于 startDate。
+        scheduleType:
+          $ref: '#/components/schemas/ScheduleType'
+        scheduleDays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+          description: weekly 必填，至少一个；1=周一...7=周日。
+        reminderTime:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: 提醒时间 HH:MM，任务时区。用于站内提示。
+        timezone:
+          type: string
+          description: IANA 时区，任务时区。DEC-14。
+        icon:
+          type: string
+          description: 可选，任务图标标识。
+        color:
+          type: string
+          description: 可选，任务颜色标识。
+        # 清单型专属
+        dailyTargetCount:
+          type: integer
+          minimum: 1
+          description: checklist 必填，每日条目目标。
+        # 习惯型专属
+        dailyTargetValue:
+          type: number
+          minimum: 0
+          description: habit 可选，每日目标值。
+        dailyTargetUnit:
+          type: string
+          description: habit 可选，单位，如 个/分钟/页。
+        noteRequired:
+          type: boolean
+          default: false
+          description: habit 备注是否必填。
+        allowEarlyCompletion:
+          type: boolean
+          default: true
+          description: checklist 是否允许提前完成。DEC-11。
+    TaskUpdateRequest:
+      type: object
+      description: 与 TaskCreateRequest 同字段（PATCH 部分更新）；携带版本号。
+      allOf:
+        - $ref: '#/components/schemas/TaskCreateRequest'
+      properties:
+        version:
+          type: integer
+          description: If-Match-Version 对应值，必填。
+    TaskView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - type
+        - status
+        - scheduleType
+        - startDate
+        - timezone
+        - version
+        - ended
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          $ref: '#/components/schemas/TaskType'
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        scheduleType:
+          $ref: '#/components/schemas/ScheduleType'
+        scheduleDays:
+          type: array
+          items:
+            type: integer
+        reminderTime:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+        dailyTargetCount:
+          type: integer
+          nullable: true
+        dailyTargetValue:
+          type: number
+          nullable: true
+        dailyTargetUnit:
+          type: string
+          nullable: true
+        noteRequired:
+          type: boolean
+        allowEarlyCompletion:
+          type: boolean
+        version:
+          type: integer
+          description: 乐观锁版本，编辑必须携带。
+        ended:
+          type: boolean
+          description: 派生：endDate 早于今日（任务时区）为 true。
+        itemCount:
+          type: integer
+          description: checklist 条目总数。
+        completedItemCount:
+          type: integer
+          description: checklist 已完成条目数。
+        created:
+          type: boolean
+          description: 本次响应是否为新创建（创建接口）。可选。
+    TaskPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskView'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+
+    # ============ 学习条目 ============
+    ItemStatus:
+      type: string
+      enum: [pending, completed, archived]
+    ItemView:
+      type: object
+      additionalProperties: false
+      required: [id, taskId, title, sortOrder, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+          nullable: true
+          description: 题目正文。
+        analysis:
+          type: string
+          nullable: true
+          description: 题库解析，非用户题解。有值才显示"查看解析"。
+        externalUrl:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ItemStatus'
+        sourcePageStart:
+          type: integer
+          nullable: true
+        sourcePageEnd:
+          type: integer
+          nullable: true
+        parseConfidence:
+          type: number
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+          description: 条目版本（题解相关编辑使用）。
+    ItemPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemView'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    ItemCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+        externalUrl:
+          type: string
+    ItemUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        externalUrl:
+          type: string
+    PastePreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: 每行一个条目的文本。
+    PastePreviewResponse:
+      type: object
+      additionalProperties: false
+      required: [totalLines, validLines, errorLines, candidates]
+      properties:
+        totalLines:
+          type: integer
+        validLines:
+          type: integer
+        errorLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PasteErrorLine'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PasteCandidate'
+    PasteErrorLine:
+      type: object
+      additionalProperties: false
+      required: [lineNumber, reason]
+      properties:
+        lineNumber:
+          type: integer
+        reason:
+          type: string
+    PasteCandidate:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+          nullable: true
+    PasteConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [candidateTitles]
+      properties:
+        candidateTitles:
+          type: array
+          items:
+            type: string
+          description: 确认写入的条目标题列表，按顺序追加。
+
+    # ============ 今日计划 / 分配 ============
+    TodayItem:
+      type: object
+      additionalProperties: false
+      required: [item, assigned, belongsToToday]
+      properties:
+        item:
+          $ref: '#/components/schemas/ItemView'
+        assigned:
+          type: boolean
+          description: 是否今日分配项。
+        belongsToToday:
+          type: boolean
+          description: 完成归属是否计入今日计划（非今日=只计总进度）。DEC-11。
+    TodayItemsResponse:
+      type: object
+      additionalProperties: false
+      required: [task, plannedCount, completedCount, items]
+      properties:
+        task:
+          $ref: '#/components/schemas/TaskView'
+        plannedCount:
+          type: integer
+          description: 今日目标（已按剩余量缩减）。
+        completedCount:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodayItem'
+
+    # ============ 题解 ============
+    SubmissionStatus:
+      type: string
+      enum: [draft, submitted]
+    SubmissionView:
+      type: object
+      additionalProperties: false
+      required: [itemId, solutionContent, status, version]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        solutionContent:
+          type: string
+          description: 用户题解文字，可为空（草稿）。
+        attachmentImages:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttachmentImage'
+          description: 已绑定图片（有效图片满足完成条件）。
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+          description: 题解版本，保存/提交必须携带。
+    AttachmentImage:
+      type: object
+      additionalProperties: false
+      required: [fileId, url]
+      properties:
+        fileId:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+          description: 私有鉴权下载地址。
+        sortOrder:
+          type: integer
+    SubmissionSaveRequest:
+      type: object
+      additionalProperties: false
+      required: [solutionContent, version]
+      properties:
+        solutionContent:
+          type: string
+          description: 可为空（保存草稿）。
+        version:
+          type: integer
+          description: 若为草稿首次保存可省略。
+    SubmissionSaveResponse:
+      type: object
+      additionalProperties: false
+      required: [submission]
+      properties:
+        submission:
+          $ref: '#/components/schemas/SubmissionView'
+    SubmissionHistory:
+      type: object
+      additionalProperties: false
+      required: [itemId, versions]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionVersion'
+    SubmissionVersion:
+      type: object
+      additionalProperties: false
+      required: [version, solutionContent, savedAt]
+      properties:
+        version:
+          type: integer
+        solutionContent:
+          type: string
+        savedAt:
+          type: string
+          format: date-time
+
+    # ============ 完成 / 撤销 ============
+    CompleteRequest:
+      type: object
+      additionalProperties: false
+      required: [version, idempotencyKey]
+      properties:
+        version:
+          type: integer
+          description: 题解版本。
+        idempotencyKey:
+          type: string
+          format: uuid
+          description: 防重复完成。DEC/§3.2。
+        completionContext:
+          type: string
+          enum: [today, early]
+          description: today=计入今日；early=提前完成，只计总进度。DEC-11。
+    CompleteResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - itemId
+        - itemStatus
+        - todayCompletedCount
+        - todayPlannedCount
+        - taskTotalCompletedCount
+        - checkinStatus
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        itemStatus:
+          $ref: '#/components/schemas/ItemStatus'
+        todayCompletedCount:
+          type: integer
+          description: 今日已完成数（today 上下文）。
+        todayPlannedCount:
+          type: integer
+        taskTotalCompletedCount:
+          type: integer
+          description: 任务总进度。
+        checkinStatus:
+          $ref: '#/components/schemas/CheckinStatus'
+          description: 达标后自动为 completed（DEC-09）。
+    ReopenRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          type: string
+          format: uuid
+
+    # ============ 打卡 ============
+    CheckinStatus:
+      type: string
+      enum: [completed, partial, missed, makeup]
+    CheckinView:
+      type: object
+      additionalProperties: false
+      required: [id, taskId, checkinDate, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        checkinDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/CheckinStatus'
+        plannedCount:
+          type: integer
+          nullable: true
+        completedCount:
+          type: integer
+          nullable: true
+        actualValue:
+          type: number
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        makeupReason:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          description: 习惯打卡记录版本（当日编辑用）。
+    HabitCheckinRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        actualValue:
+          type: number
+          minimum: 0
+          description: 可选；无目标时忽略。
+        note:
+          type: string
+          description: 备注；noteRequired 时必填。
+        idempotencyKey:
+          type: string
+          format: uuid
+    HabitCheckinEditRequest:
+      type: object
+      additionalProperties: false
+      required: [version, idempotencyKey]
+      properties:
+        actualValue:
+          type: number
+          minimum: 0
+        note:
+          type: string
+        version:
+          type: integer
+        idempotencyKey:
+          type: string
+          format: uuid
+    MakeupRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotencyKey]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 补打原因必填。DEC-12。
+        actualValue:
+          type: number
+          description: 习惯型补打实际量（可选）。
+        note:
+          type: string
+        idempotencyKey:
+          type: string
+          format: uuid
+          description: 补打提交后不可编辑/撤销（DEC-24）。
+
+    # ============ 今日总览 ============
+    DashboardStatus:
+      type: string
+      enum: [notStarted, inProgress, completed, overdue, due, paused, noPlan]
+      description: 派生状态，优先级 completed > overdue > due > inProgress > notStarted。DEC-15。
+    TodayTask:
+      type: object
+      additionalProperties: false
+      required: [task, status, completedCount, plannedCount, reminderText]
+      properties:
+        task:
+          $ref: '#/components/schemas/TaskView'
+        status:
+          $ref: '#/components/schemas/DashboardStatus'
+        completedCount:
+          type: integer
+        plannedCount:
+          type: integer
+          description: 清单=今日目标；习惯=目标值（可为 0/无）。
+        actualValue:
+          type: number
+          nullable: true
+        reminderText:
+          type: string
+          nullable: true
+          description: 站内提示文本，如"算法 200 题：今日还差 3 题"。
+    DashboardTodayResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - date
+        - todayCount
+        - completedCount
+        - pendingCount
+        - completionRate
+        - tasks
+        - currentStreak
+        - longestStreak
+      properties:
+        date:
+          type: string
+          format: date
+          description: 用户时区今日。
+        todayCount:
+          type: integer
+          description: 今日任务数。
+        completedCount:
+          type: integer
+        pendingCount:
+          type: integer
+        completionRate:
+          type: number
+          description: 0~1，整体完成率。
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TodayTask'
+        currentStreak:
+          type: integer
+          description: 当前连续天数。
+        longestStreak:
+          type: integer
+
+    # ============ 日历 / 统计 ============
+    CalendarDay:
+      type: object
+      additionalProperties: false
+      required: [date, status]
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [completed, partial, missed, makeup, noPlan]
+        plannedCount:
+          type: integer
+          nullable: true
+        completedCount:
+          type: integer
+          nullable: true
+        actualValue:
+          type: number
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        solutionSummary:
+          type: string
+          nullable: true
+          description: 题解摘要，不返回完整敏感题解全文。
+        makeupReason:
+          type: string
+          nullable: true
+    CalendarMonthResponse:
+      type: object
+      additionalProperties: false
+      required: [month, days]
+      properties:
+        month:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarDay'
+    TaskStats:
+      type: object
+      additionalProperties: false
+      required: [task]
+      properties:
+        task:
+          $ref: '#/components/schemas/TaskView'
+        currentStreak:
+          type: integer
+        longestStreak:
+          type: integer
+        completedItemCount:
+          type: integer
+        totalItemCount:
+          type: integer
+          description: checklist 总条目。
+        remainingItemCount:
+          type: integer
+        estimatedCompletionDate:
+          type: string
+          format: date
+          nullable: true
+          description: 预计完成日期（checklist）。仅预估。
+        habitTotalCheckinDays:
+          type: integer
+        habitMonthCompletedDays:
+          type: integer
+        habitMonthCompletionRate:
+          type: number
+
+    # ============ 文件 ============
+    FilePurpose:
+      type: string
+      enum: [source_material, question_image, solution_image]
+    FileUploadResponse:
+      type: object
+      additionalProperties: false
+      required: [fileId, purpose, originalName, size, contentHash, duplicate]
+      properties:
+        fileId:
+          type: string
+          format: uuid
+        purpose:
+          $ref: '#/components/schemas/FilePurpose'
+        originalName:
+          type: string
+        size:
+          type: integer
+        contentHash:
+          type: string
+          description: 服务端重算 SHA-256，最终依据。DEC-19。
+        duplicate:
+          type: boolean
+          description: 同任务同哈希重复时 true，返回既有 fileId/batchId。DEC-19。
+        batchId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 源资料上传时关联导入批次；重复时返回既有 batchId。
+        downloadUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: 题解图片返回私有鉴权下载地址。
+    FileDownloadResponse:
+      type: object
+      description: 以 application/octet-stream 流式返回，响应头含 Content-Disposition（原名）。
+
+    # ============ 导入 ============
+    ImportBatchStatus:
+      type: string
+      enum: [PENDING, PROCESSING, REVIEW_READY, CONFIRMING, COMPLETED, FAILED]
+      description: DEC-16。
+    ImportBatchView:
+      type: object
+      additionalProperties: false
+      required: [batchId, taskId, status, fileName, fileType]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ImportBatchStatus'
+        fileName:
+          type: string
+        fileType:
+          type: string
+          enum: [pdf, docx, csv]
+        fileId:
+          type: string
+          format: uuid
+        declaredItemCount:
+          type: integer
+          nullable: true
+        recognizedItemCount:
+          type: integer
+        confirmedItemCount:
+          type: integer
+        failureSummary:
+          type: string
+          nullable: true
+          description: 受控错误摘要，不泄漏堆栈/路径。
+        createdAt:
+          type: string
+          format: date-time
+    CandidateDuplicateCategory:
+      type: string
+      enum: [none, exact_duplicate, similar_duplicate]
+      description: 精确重复/疑似重复/新增。DEC-18。
+    CandidateAction:
+      type: string
+      enum: [skip, keep_new, merge]
+      description: 三种处理动作，无覆盖。默认 skip。DEC-18。
+    ImportCandidateView:
+      type: object
+      additionalProperties: false
+      required: [candidateId, title, sortOrder, duplicateCategory, action, version]
+      properties:
+        candidateId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        sortOrder:
+          type: integer
+          description: 候选序号，稳定排序依据。
+        content:
+          type: string
+          nullable: true
+        analysis:
+          type: string
+          nullable: true
+        sourcePageStart:
+          type: integer
+          nullable: true
+        sourcePageEnd:
+          type: integer
+          nullable: true
+        rawFragment:
+          type: string
+          nullable: true
+          description: 原始片段，编辑不被覆盖，供追溯。
+        parseConfidence:
+          type: number
+          nullable: true
+        lowConfidence:
+          type: boolean
+          description: 仅靠问句规则识别等情形为 true，需显式确认。S7-BE-05。
+        duplicateCategory:
+          $ref: '#/components/schemas/CandidateDuplicateCategory'
+        similarToItemTitle:
+          type: string
+          nullable: true
+          description: 疑似重复时展示已有题摘要。
+        similarToItemId:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          $ref: '#/components/schemas/CandidateAction'
+        mergeTargetItemId:
+          type: string
+          format: uuid
+          nullable: true
+          description: merge 时目标条目（同任务）。
+        version:
+          type: integer
+    ImportCandidatePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportCandidateView'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    CandidateStats:
+      type: object
+      additionalProperties: false
+      required: [recognizedCount, withAnalysisCount, withoutAnalysisCount, lowConfidenceCount]
+      properties:
+        recognizedCount:
+          type: integer
+        withAnalysisCount:
+          type: integer
+        withoutAnalysisCount:
+          type: integer
+        lowConfidenceCount:
+          type: integer
+    CandidateUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        analysis:
+          type: string
+        version:
+          type: integer
+    CandidateSplitRequest:
+      type: object
+      additionalProperties: false
+      required: [splitAfter, version]
+      properties:
+        splitAfter:
+          type: integer
+          description: 拆分为两条，前一条包含此序号为止。
+        version:
+          type: integer
+    CandidateMergeRequest:
+      type: object
+      additionalProperties: false
+      required: [candidateIds, version]
+      properties:
+        candidateIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 2
+          description: 连续候选合并成一条。S8-BE-02。
+        version:
+          type: integer
+    CandidateActionRequest:
+      type: object
+      additionalProperties: false
+      required: [action, version]
+      properties:
+        action:
+          $ref: '#/components/schemas/CandidateAction'
+        mergeTargetItemId:
+          type: string
+          format: uuid
+          description: merge 时必须，目标条目。
+        version:
+          type: integer
+    ConfirmImportRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey:
+          type: string
+          format: uuid
+          description: 幂等确认入库。S8-BE-07。
+    ConfirmImportResponse:
+      type: object
+      additionalProperties: false
+      required: [batchId, createdCount, skippedCount, mergedCount]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        createdCount:
+          type: integer
+        skippedCount:
+          type: integer
+        mergedCount:
+          type: integer
+
+    # ============ 导出 ============
+    ExportFormat:
+      type: string
+      enum: [csv, json]
+    ExportResponse:
+      type: object
+      description: 返回可下载的 CSV/JSON 文件流。DEC-20：含任务、条目、题解文字全文、打卡记录；不内嵌图片/原文件，不泄漏内部路径、密码、Session、CSRF、内部哈希。
+
+    # ============ 错误 ============
+    ErrorCode:
+      type: string
+      description: >
+        稳定错误码。HTTP 映射：401 会话失效、403 无权限/CSRF、409 版本冲突、
+        422 字段校验、429 限流、5xx 服务错误。具体 code 由各实现定义，但前端
+        依据 HTTP 状态与稳定 code 分类，不解析 message。
+  responses:
+    Success:
+      description: 成功，业务数据在 data 中。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeSuccess'
+    BadRequest:
+      description: 422 字段校验失败或 400。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    Conflict:
+      description: 409 版本冲突，返回最新摘要。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    Unauthorized:
+      description: 401 会话失效。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    Forbidden:
+      description: 403 无权限或 CSRF 失败。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    TooManyRequests:
+      description: 429 限流。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    ServerError:
+      description: 5xx 服务错误。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
