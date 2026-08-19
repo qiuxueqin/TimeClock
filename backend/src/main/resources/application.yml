@@ -1,0 +1,28 @@
+# 学习打卡系统后端默认配置（S0-BE-01 骨架）
+# 敏感信息一律通过环境变量注入，此处不放任何秘密。连接信息见 S0-DB-01。
+
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: timeclock-backend
+  # DataSource / Flyway 由 S0-DB-01 通过环境变量注入（如 SPRING_DATASOURCE_URL 等）。
+  # 本骨架未连接数据库，避免工程级冒烟测试依赖远程 MySQL。
+
+# 健康检查（Actuator）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+# OpenAPI：生产环境由环境变量关闭（S9-OPS-02）
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
