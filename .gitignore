@@ -1,0 +1,41 @@
+# ---- IDE / 编辑器私有配置 ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# ---- Java / Maven 构建产物 ----
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# ---- 前端构建产物与依赖 ----
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.coverage/
+coverage/
+
+# ---- 运行时 / 环境秘密（绝不提交）----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+!*.example.env
+
+# ---- 本地文件存储卷（运行时，绝不可入库）----
+storage/
+data/
+uploads/
+app-files/
+
+# ---- 操作系统 / 通用 ----
+.DS_Store
+Thumbs.db
