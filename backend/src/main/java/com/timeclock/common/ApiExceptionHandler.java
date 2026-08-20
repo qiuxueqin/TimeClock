@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import com.timeclock.auth.BusinessException;
 
@@ -43,7 +44,14 @@ public class ApiExceptionHandler {
                 .body(EnvelopeError.of("VALIDATION_ERROR", message, requestId));
     }
 
-    /** 未预期异常：记录 requestId 与错误类型（不记录请求体/密码），返回 500。 */
+    /** JSON 类型、日期或未知枚举格式错误。 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<EnvelopeError> handleUnreadable(HttpMessageNotReadableException ex) {
+        String requestId = RequestContext.requestId();
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY.value())
+                .body(EnvelopeError.of("VALIDATION_ERROR", "请求参数格式不正确", requestId));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<EnvelopeError> handleUnexpected(Exception ex) {
         String requestId = RequestContext.requestId();

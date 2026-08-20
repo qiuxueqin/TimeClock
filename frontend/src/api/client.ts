@@ -1,4 +1,20 @@
 export type UserView = { id: string; email: string; timezone: string };
+
+export type TaskStatus = 'draft' | 'active';
+export type TaskType = 'checklist';
+export type ScheduleType = 'daily';
+export type TaskView = {
+  id: string; name: string; description: string | null; type: TaskType; status: TaskStatus;
+  startDate: string; endDate: string | null; scheduleType: ScheduleType; timezone: string;
+  dailyTargetCount: number; ended: boolean; itemCount: number; completedItemCount: number;
+};
+export type TaskPage = { items: TaskView[]; page: number; pageSize: number; total: number };
+export type TaskCreateRequest = {
+  name: string; description?: string; type: TaskType; startDate: string; endDate?: string | null;
+  scheduleType: ScheduleType; timezone: string; dailyTargetCount: number;
+};
+export type TaskUpdateRequest = Partial<Pick<TaskCreateRequest, 'name' | 'description' | 'startDate' | 'endDate' | 'scheduleType' | 'timezone' | 'dailyTargetCount'>>;
+
 export type Envelope<T> = { data: T; requestId: string };
 export type ApiErrorBody = { error?: { code?: string; message?: string }; requestId?: string };
 
@@ -16,6 +32,7 @@ function resetCsrf() {
 }
 
 async function readBody<T>(response: Response): Promise<T> {
+  if (response.status === 204) return undefined as T;
   const body = (await response.json()) as Envelope<T> & ApiErrorBody;
   if (!response.ok) {
     throw new ApiError(response.status, body.error?.code ?? 'HTTP_ERROR', body.error?.message ?? '请求失败', body.requestId);
@@ -47,6 +64,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return readBody<T>(response);
 }
+
+export const taskApi = {
+  list: (params: { status?: TaskStatus; page?: number; pageSize?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.status) query.set('status', params.status);
+    query.set('page', String(params.page ?? 1));
+    query.set('pageSize', String(params.pageSize ?? 20));
+    return request<TaskPage>(`/tasks?${query.toString()}`);
+  },
+  get: (id: string) => request<TaskView>(`/tasks/${encodeURIComponent(id)}`),
+  create: (body: TaskCreateRequest) => request<TaskView>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: string, body: TaskUpdateRequest) => request<TaskView>(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  remove: (id: string) => request<void>(`/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+};
 
 export const authApi = {
   register: (body: { email: string; password: string; confirmPassword: string }) => request<{ user: UserView }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),

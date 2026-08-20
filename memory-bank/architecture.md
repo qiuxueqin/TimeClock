@@ -6,6 +6,7 @@
 
 - S0：规格、工程骨架、CI、远程 MySQL 测试基础已完成并通过 GATE-S0。
 - S1：认证、数据库 Session、CSRF、登录注册前端和基础多端验收已完成；提交 `c04da74`。S2 资源接口必须复用当前用户上下文和归属约束；真实资源越权测试随资源模块落地。
+- S2：任务契约、V4 任务模型、任务创建/读取/列表/编辑/删除、daily 计划计算和基础任务管理前端已实现；后端 46 项独立 MySQL 回归、OpenAPI 校验和前端 typecheck/test/build 已通过。S2 Gate 仍等待 S3 条目模型提供成功 activate 主链路，以及任务专属 MSW/RTL 和移动端 E2E 验收。
 - 精简后的后续主线：S1 → S2 任务 → S3 条目/xlsx → S4 题解/自动打卡 → S5 今日页 → S6 日历/连续/补打 → S7 部署验收。
 
 ## 2. 文档地图
@@ -39,6 +40,8 @@ MySQL 8（远程实例）
 ## 4.1 S1 认证实现摘要
 
 - `AuthService` 负责邮箱规范化、Argon2id 注册/登录、统一认证失败响应和 IP+邮箱失败限流。
+- S2 `task` 模块复用 SessionAuthenticationFilter 的当前用户主体和 JdbcTemplate；创建固定为 draft，条目表交付前 activate 对空条目稳定返回 422，不查询不存在的 learning_items 表。
+- S2 `schedule` 计算使用注入 Clock 与任务自身 IANA 时区，通过 LocalDate 判定 daily 计划日和预计完成日期；真实剩余条目数与顺延分配由 S3 接入。
 - `SessionService` 生成高熵随机 Token；`user_sessions` 仅保存 SHA-256 哈希，并支持 30 天 TTL、撤销和超过 15 天访问间隔后的滚动续期。
 - `SessionAuthenticationFilter` 从 `SESSION_ID` Cookie 恢复 active 用户，将 `AuthenticatedUser` 写入 Spring Security 上下文；应用使用无状态 Spring Security，不依赖容器 HttpSession。
 - `AuthSecurityConfig` 启用 CSRF，匿名允许 `register/login/csrf`，`me/logout` 要求认证；写请求缺少或错误 CSRF 返回 403。
@@ -47,7 +50,7 @@ MySQL 8（远程实例）
 
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
-- `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界。
+- `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
 - `learning_items`：题目、解析、顺序、pending/completed、文字题解。
 - `checkins`：按任务+日期唯一，completed/partial/missed/makeup。
 - `idempotency_keys`：完成、撤销、补打、xlsx 确认防重复。

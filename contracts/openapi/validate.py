@@ -94,6 +94,49 @@ def main() -> int:
         if r.split("/")[-1] not in responses:
             errors.append(f"未解析响应引用: {r}")
 
+    # 6. S2 任务契约冻结断言（TEST-S2-API-01-01）
+    task_paths = {p: paths.get(p) for p in (
+        "/tasks", "/tasks/{taskId}", "/tasks/{taskId}/activate")}
+    for p, op in task_paths.items():
+        if not op:
+            errors.append(f"S2 任务路径缺失: {p}")
+    for forbidden in ("/tasks/{taskId}/enable", "/tasks/{taskId}/pause",
+                      "/tasks/{taskId}/resume", "/tasks/{taskId}/archive"):
+        if forbidden in paths:
+            errors.append(f"S2 任务路径超出精简范围: {forbidden}")
+
+    task_type = schemas.get("TaskType", {}).get("enum")
+    if task_type != ["checklist"]:
+        errors.append(f"TaskType 必须仅为 checklist，实际为 {task_type}")
+    task_status = schemas.get("TaskStatus", {}).get("enum")
+    if task_status != ["draft", "active"]:
+        errors.append(f"TaskStatus 必须为 draft/active，实际为 {task_status}")
+    schedule_type = schemas.get("ScheduleType", {}).get("enum")
+    if schedule_type != ["daily"]:
+        errors.append(f"ScheduleType 必须仅为 daily，实际为 {schedule_type}")
+
+    create = schemas.get("TaskCreateRequest", {})
+    create_props = create.get("properties", {})
+    for field in ("name", "type", "scheduleType", "startDate", "timezone", "dailyTargetCount"):
+        if field not in create.get("required", []) or field not in create_props:
+            errors.append(f"TaskCreateRequest 缺少必填字段: {field}")
+    if create_props.get("name", {}).get("minLength") != 1 or create_props.get("name", {}).get("maxLength") != 50:
+        errors.append("TaskCreateRequest.name 必须限制为 1-50")
+    if create_props.get("description", {}).get("maxLength") != 500:
+        errors.append("TaskCreateRequest.description 必须限制为最多 500")
+    if create_props.get("dailyTargetCount", {}).get("minimum") != 1:
+        errors.append("TaskCreateRequest.dailyTargetCount 必须至少为 1")
+
+    update = schemas.get("TaskUpdateRequest", {})
+    if "version" in update.get("properties", {}) or "If-Match-Version" in str(task_paths.get("/tasks/{taskId}", {}).get("patch", {})):
+        errors.append("S2 任务 PATCH 不得声明 version/If-Match-Version")
+    activate = paths.get("/tasks/{taskId}/activate", {}).get("post", {})
+    if "csrf" not in {k for sec in activate.get("security", []) for k in sec}:
+        errors.append("任务 activate 缺 CSRF")
+    delete = paths.get("/tasks/{taskId}", {}).get("delete", {})
+    if "物理删除" not in delete.get("description", ""):
+        errors.append("任务 DELETE 必须明确物理删除")
+
     if errors:
         for e in errors:
             print(f"[ERROR] {e}")

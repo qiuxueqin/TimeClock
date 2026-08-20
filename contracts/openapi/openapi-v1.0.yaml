@@ -10,7 +10,7 @@
 #   - 成功响应包 { data, requestId }，失败 { error: { code, message }, requestId }
 #   - 日期 YYYY-MM-DD，不 UTC 重解释；时区 IANA；时间戳带偏移
 #   - 所有写请求（POST/PUT/PATCH/DELETE）需 CSRF；防重复写需 Idempotency-Key
-#   - 编辑携带 If-Match-Version；版本不匹配 → 409
+#   - 任务配置编辑不使用版本字段；完成/撤销/补打/导入确认等防重复写仍按各自契约声明幂等键
 openapi: 3.1.0
 info:
   title: 学习打卡系统 API
@@ -209,7 +209,7 @@ paths:
       tags: [tasks]
       summary: 任务列表
       operationId: listTasks
-      description: 分页列表，默认排除软删除；支持 status/type 筛选；稳定排序。不变量 1 归属校验。
+      description: 当前用户的清单任务分页列表；支持 status 筛选，按 createdAt DESC、id DESC 稳定排序。不存在或其他用户的任务不会出现在结果中。
       security:
         - sessionCookie: []
       parameters:
@@ -217,19 +217,18 @@ paths:
           in: query
           schema:
             $ref: '#/components/schemas/TaskStatus'
-        - name: type
-          in: query
-          schema:
-            $ref: '#/components/schemas/TaskType'
         - name: page
           in: query
           schema:
             type: integer
+            minimum: 1
             default: 1
         - name: pageSize
           in: query
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 20
       responses:
         '200':
@@ -247,11 +246,13 @@ paths:
                     type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/BadRequest'
     post:
       tags: [tasks]
-      summary: 创建任务
+      summary: 创建清单任务
       operationId: createTask
-      description: 创建两类任务。清单默认 draft；习惯配置有效时可直接 active。创建与启用分离（S2-BE-01）。
+      description: 仅创建清单型 daily 任务。任务始终以 draft 创建，必须通过独立 activate 动作启用；客户端不能直接提交 active 状态。
       security:
         - sessionCookie: []
         - csrf: []
@@ -263,7 +264,7 @@ paths:
               $ref: '#/components/schemas/TaskCreateRequest'
       responses:
         '201':
-          description: 任务创建成功。
+          description: 任务创建成功，状态固定为 draft。
           content:
             application/json:
               schema:
@@ -275,16 +276,18 @@ paths:
                     $ref: '#/components/schemas/TaskView'
                   requestId:
                     type: string
-        '422':
-          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/BadRequest'
   /tasks/{taskId}:
     get:
       tags: [tasks]
       summary: 任务详情
       operationId: getTask
-      description: 含统计与派生 ended 状态。归属校验，他人任务 403/404 不泄漏存在性。
+      description: 返回当前用户任务及派生信息。不存在或不属于当前用户统一返回 404 TASK_NOT_FOUND，不泄露资源存在性。
       security:
         - sessionCookie: []
       parameters:
@@ -311,16 +314,12 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: 不存在或无权访问（不区分）。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvelopeError'
+          $ref: '#/components/responses/TaskNotFound'
     patch:
       tags: [tasks]
       summary: 编辑任务
       operationId: updateTask
-      description: 携带 If-Match-Version；旧版本 409 并返回最新摘要。频率/目标/时区变更只对未开始计划生效（DEC-07）。启用后禁止类型切换（DEC-05）。
+      description: 部分更新任务配置；不接受 status、type 或版本字段。频率、目标或时区变更只影响尚未开始的未来计划，不重写历史事实。active 任务不能退回 draft。
       security:
         - sessionCookie: []
         - csrf: []
@@ -331,11 +330,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: If-Match-Version
-          in: header
-          required: true
-          schema:
-            type: integer
       requestBody:
         required: true
         content:
@@ -345,17 +339,19 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
     delete:
       tags: [tasks]
-      summary: 删除任务（软删除）
+      summary: 物理删除任务
       operationId: deleteTask
-      description: 二次确认由前端收集；软删除，立即隐藏，内部保留 30 天（DEC-21）。有历史时返回归档建议摘要。
+      description: 二次确认由前端收集；后端立即物理删除任务及关联条目、打卡等数据，不保留 deleted 状态、回收站或归档期。删除后不可读取、编辑或启用。
       security:
         - sessionCookie: []
         - csrf: []
@@ -367,22 +363,18 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          description: 有历史记录，建议归档。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvelopeError'
+        '204':
+          description: 删除成功，无响应体。
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/enable:
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
+  /tasks/{taskId}/activate:
     post:
       tags: [tasks]
       summary: 启用任务
-      operationId: enableTask
-      description: 状态转换 draft→active。清单须 ≥1 已确认条目且配置有效（DEC-04）；无条目返回 422。习惯有效直接 active。
+      operationId: activateTask
+      description: 仅允许 draft→active。任务配置必须有效且至少有一个已确认条目；无条目或无效配置返回 422。active→draft、重复或不存在任务按稳定错误语义拒绝。
       security:
         - sessionCookie: []
         - csrf: []
@@ -396,72 +388,14 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/pause:
-    post:
-      tags: [tasks]
-      summary: 暂停任务
-      operationId: pauseTask
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/resume:
-    post:
-      tags: [tasks]
-      summary: 恢复任务
-      operationId: resumeTask
-      description: 恢复后从下一合格计划日继续，不回补暂停期。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/archive:
-    post:
-      tags: [tasks]
-      summary: 归档任务
-      operationId: archiveTask
-      description: 归档只读，V1.0 无恢复。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
 
   # ============ 学习条目（S3） ============
   /tasks/{taskId}/items:
@@ -1798,18 +1732,18 @@ components:
     # ============ 任务 ============
     TaskType:
       type: string
-      enum: [checklist, habit]
+      enum: [checklist]
     TaskStatus:
       type: string
-      enum: [draft, active, paused, archived]
-      description: 结束状态由 endDate 派生，不新增持久值。
+      enum: [draft, active]
+      description: 删除为物理删除；结束状态由 endDate 在任务时区下派生，不新增持久值。
     ScheduleType:
       type: string
-      enum: [daily, weekly]
+      enum: [daily]
     TaskCreateRequest:
       type: object
       additionalProperties: false
-      required: [name, type, scheduleType, startDate, timezone]
+      required: [name, type, scheduleType, startDate, timezone, dailyTargetCount]
       properties:
         name:
           type: string
@@ -1823,63 +1757,48 @@ components:
         startDate:
           type: string
           format: date
-          description: YYYY-MM-DD，默认今天。
+          description: YYYY-MM-DD，不按 UTC 重解释。
         endDate:
           type: string
           format: date
-          description: 可选，不早于 startDate。
+          description: 可选，不能早于 startDate。
         scheduleType:
           $ref: '#/components/schemas/ScheduleType'
-        scheduleDays:
-          type: array
-          items:
-            type: integer
-            minimum: 1
-            maximum: 7
-          description: weekly 必填，至少一个；1=周一...7=周日。
-        reminderTime:
-          type: string
-          pattern: '^\d{2}:\d{2}$'
-          description: 提醒时间 HH:MM，任务时区。用于站内提示。
         timezone:
           type: string
-          description: IANA 时区，任务时区。DEC-14。
-        icon:
-          type: string
-          description: 可选，任务图标标识。
-        color:
-          type: string
-          description: 可选，任务颜色标识。
-        # 清单型专属
+          description: 必须为有效 IANA 时区；保存为任务自身时区。
         dailyTargetCount:
           type: integer
           minimum: 1
-          description: checklist 必填，每日条目目标。
-        # 习惯型专属
-        dailyTargetValue:
-          type: number
-          minimum: 0
-          description: habit 可选，每日目标值。
-        dailyTargetUnit:
-          type: string
-          description: habit 可选，单位，如 个/分钟/页。
-        noteRequired:
-          type: boolean
-          default: false
-          description: habit 备注是否必填。
-        allowEarlyCompletion:
-          type: boolean
-          default: true
-          description: checklist 是否允许提前完成。DEC-11。
+          description: 每日条目目标，必须为整数且至少为 1。
     TaskUpdateRequest:
       type: object
-      description: 与 TaskCreateRequest 同字段（PATCH 部分更新）；携带版本号。
-      allOf:
-        - $ref: '#/components/schemas/TaskCreateRequest'
+      additionalProperties: false
+      minProperties: 1
       properties:
-        version:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        scheduleType:
+          $ref: '#/components/schemas/ScheduleType'
+        timezone:
+          type: string
+          description: 必须为有效 IANA 时区。
+        dailyTargetCount:
           type: integer
-          description: If-Match-Version 对应值，必填。
+          minimum: 1
     TaskView:
       type: object
       additionalProperties: false
@@ -1891,8 +1810,10 @@ components:
         - scheduleType
         - startDate
         - timezone
-        - version
+        - dailyTargetCount
         - ended
+        - itemCount
+        - completedItemCount
       properties:
         id:
           type: string
@@ -1915,43 +1836,20 @@ components:
           nullable: true
         scheduleType:
           $ref: '#/components/schemas/ScheduleType'
-        scheduleDays:
-          type: array
-          items:
-            type: integer
-        reminderTime:
-          type: string
-          nullable: true
         timezone:
           type: string
         dailyTargetCount:
           type: integer
-          nullable: true
-        dailyTargetValue:
-          type: number
-          nullable: true
-        dailyTargetUnit:
-          type: string
-          nullable: true
-        noteRequired:
-          type: boolean
-        allowEarlyCompletion:
-          type: boolean
-        version:
-          type: integer
-          description: 乐观锁版本，编辑必须携带。
+          minimum: 1
         ended:
           type: boolean
-          description: 派生：endDate 早于今日（任务时区）为 true。
+          description: 派生字段：active 且 endDate 早于任务时区今日时为 true，不是持久状态。
         itemCount:
           type: integer
-          description: checklist 条目总数。
+          minimum: 0
         completedItemCount:
           type: integer
-          description: checklist 已完成条目数。
-        created:
-          type: boolean
-          description: 本次响应是否为新创建（创建接口）。可选。
+          minimum: 0
     TaskPage:
       type: object
       additionalProperties: false
@@ -1963,10 +1861,14 @@ components:
             $ref: '#/components/schemas/TaskView'
         page:
           type: integer
+          minimum: 1
         pageSize:
           type: integer
+          minimum: 1
+          maximum: 100
         total:
           type: integer
+          minimum: 0
 
     # ============ 学习条目 ============
     ItemStatus:
@@ -2782,7 +2684,13 @@ components:
           schema:
             $ref: '#/components/schemas/EnvelopeError'
     Conflict:
-      description: 409 版本冲突，返回最新摘要。
+      description: 409 业务冲突，例如同一用户下任务名称重复或非法状态转换。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    TaskNotFound:
+      description: 404 任务不存在或不属于当前用户，统一错误码 TASK_NOT_FOUND。
       content:
         application/json:
           schema:
