@@ -143,7 +143,20 @@
 | S7-OPS-02 | REQ-OPS-01 |
 | S7-QA-01 | REQ-NFR-01；全部 REQ（§8 验收场景） |
 
-## 5. 审计结论（TEST-S0-ARC-01-01）
+## 5. S1 交付审计
+
+S1 认证主链路已完成并在提交 `c04da74` 交付：
+
+- `TEST-S1-BE-02-01`：登录成功、统一 401、失败限流、Token Hash、Cookie 与多端 Session，见 `AuthSessionApiTests`。
+- `TEST-S1-BE-03-01`：`/me`、Session 恢复、当前会话登出与另一设备保留，见 `AuthSessionApiTests`。
+- `TEST-S1-BE-04-01`：匿名 CSRF 获取、缺失 Token 拒绝、登录写请求边界，见 `AuthSecurityBoundaryTests`。
+- `TEST-S1-BE-05-01`：当前认证主体和 user ID 上下文已建立；实际任务资源越权测试由 S2 资源接口复用。
+- `TEST-S1-FE-01-01`：Cookie、CSRF 注入、错误码/requestId 映射，见 `frontend/src/api/client.test.ts`。
+- `TEST-S1-FE-02-01`：登录/注册路由、会话恢复和受保护路由已交付。
+- `TEST-S1-QA-01-01`：Playwright 已建立未认证跳转及双浏览器上下文 Cookie 隔离基础用例；跨用户业务资源用例待 S2 资源出现后补充。
+
+S1 阶段结论：认证主链路和基础安全门禁通过，进入 S2。未实现的任务资源授权测试不作为当前 S1 阻塞项，但属于 S2 每类资源的强制验收条件。
+
 
 正向审计：1.1 中 12 项 REQ 均已映射到至少一个步骤和一个测试。**无无步骤需求。**
 反向审计：全部步骤（S0-ARC-01 至 S7-QA-01）均已登记来源。**无无来源功能步骤。**

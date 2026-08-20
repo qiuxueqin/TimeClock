@@ -60,7 +60,13 @@ src/
 
 不建立 habit、file、submission 独立 feature。
 
-## 4. 页面与路由
+## 3.2 S1 认证前端已交付
+
+- `src/api/client.ts`：统一 `fetch` 客户端，自动携带 Cookie，内存保存 CSRF Token，写请求注入 `X-CSRF-Token`，一次性处理 CSRF 失效重试，并保留稳定错误码/requestId。
+- `src/features/auth/Auth.tsx`：AuthProvider、登录、注册、会话恢复、受保护路由、登出；登录和注册页面互相提供导航链接。
+- `src/app/App.tsx` 与 `src/app/routes.tsx`：挂载认证 Provider 和 `/login`、`/register`、`/today` 路由。
+- 测试：`src/api/client.test.ts`、`e2e/auth.spec.ts`；Session、密码和 CSRF Token 不写入 Web Storage。
+
 
 | 路由 | 页面 | 主要能力 | 访问控制 |
 | --- | --- | --- | --- |

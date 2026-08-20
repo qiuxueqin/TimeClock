@@ -59,7 +59,20 @@ flowchart LR
 5. Cookie 使用 `HttpOnly`、`Secure`、`SameSite=Lax`；Session 默认 30 天，最后访问超过 15 天滚动续期。
 6. 注册/登录采用单实例内存限流。多浏览器可同时登录，但 V1.0 不提供设备管理页面。
 
-## 5. 数据模型与约束
+## 4.1 S1 认证实现状态
+
+S1 已落地以下认证运行时组件：
+
+| 组件 | 位置 | 职责 |
+| --- | --- | --- |
+| 注册/登录服务 | `auth/AuthService.java` | 邮箱规范化、Argon2id、统一登录失败、失败限流 |
+| Session 服务 | `auth/SessionService.java` | 随机 Token、SHA-256 Hash、创建/查询/撤销/续期 |
+| Session Filter | `auth/SessionAuthenticationFilter.java` | Cookie 会话恢复与当前用户注入 |
+| Cookie 工具 | `auth/AuthCookie.java` | `SESSION_ID` 安全属性与清除 |
+| Security 配置 | `auth/AuthSecurityConfig.java` | CSRF、无状态认证、端点权限 |
+
+认证 Cookie 固定使用 `HttpOnly; Secure; SameSite=Lax; Path=/`，有效期 30 天；Session 原文不入库。S1 测试使用 `application-test.yml` 对应的独立 MySQL 8 测试库。
+
 
 | 表 | 关键字段/约束 |
 | --- | --- |

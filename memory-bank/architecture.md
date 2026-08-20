@@ -5,7 +5,7 @@
 ## 1. 当前进度
 
 - S0：规格、工程骨架、CI、远程 MySQL 测试基础已完成并通过 GATE-S0。
-- S1：用户/会话数据库模型、精简范围 V3 修正迁移与邮箱注册已完成；登录、CSRF、会话恢复仍待完成。
+- S1：认证、数据库 Session、CSRF、登录注册前端和基础多端验收已完成；提交 `c04da74`。S2 资源接口必须复用当前用户上下文和归属约束；真实资源越权测试随资源模块落地。
 - 精简后的后续主线：S1 → S2 任务 → S3 条目/xlsx → S4 题解/自动打卡 → S5 今日页 → S6 日历/连续/补打 → S7 部署验收。
 
 ## 2. 文档地图
@@ -36,7 +36,15 @@ MySQL 8（远程实例）
 
 没有文件存储卷：xlsx 在请求中解析，正式数据只有数据库记录；用户题解为 `learning_items.solution_text`。
 
-## 4. 数据模型摘要
+## 4.1 S1 认证实现摘要
+
+- `AuthService` 负责邮箱规范化、Argon2id 注册/登录、统一认证失败响应和 IP+邮箱失败限流。
+- `SessionService` 生成高熵随机 Token；`user_sessions` 仅保存 SHA-256 哈希，并支持 30 天 TTL、撤销和超过 15 天访问间隔后的滚动续期。
+- `SessionAuthenticationFilter` 从 `SESSION_ID` Cookie 恢复 active 用户，将 `AuthenticatedUser` 写入 Spring Security 上下文；应用使用无状态 Spring Security，不依赖容器 HttpSession。
+- `AuthSecurityConfig` 启用 CSRF，匿名允许 `register/login/csrf`，`me/logout` 要求认证；写请求缺少或错误 CSRF 返回 403。
+- 前端 `src/api/client.ts` 使用 `credentials: include`，CSRF Token 只保存在内存，403 可刷新 Token 后重试一次；认证页面位于 `src/features/auth/Auth.tsx`。
+- S1 验收测试：`AuthSessionApiTests`、`AuthSecurityBoundaryTests`、`frontend/src/api/client.test.ts` 和 `frontend/e2e/auth.spec.ts`。
+
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界。
