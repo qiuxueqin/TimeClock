@@ -1,91 +1,66 @@
-# 进度追踪
-
-> 当前实施阶段与步骤状态。每个原子步骤完成后在此登记，供未来的开发 Agent 和协调 Agent 参考。
+# 进度追踪（V1.0 精简版）
 
 ## 阶段门禁状态
 
 | 阶段 | 状态 | 备注 |
 | --- | --- | --- |
-| S0 规格冻结、工程骨架与质量门禁 | ✅ **已通过 GATE-S0** | 全部 S0 步骤完成，门禁验证通过 |
-| S1 认证、会话、CSRF 与用户隔离 | 🔄 进行中（2/9 步完成） | S1-DB-01、S1-BE-01 已完成；依赖 S0（已满足） |
-| S2 任务生命周期与计划规则 | ⏸ 未开始 | 依赖 S1 |
-| S3 学习条目、分配、顺延与提前完成 | ⏸ 未开始 | 依赖 S2 |
-| S4 图文题解与清单打卡闭环 | ⏸ 未开始 | 依赖 S3 |
-| S5 习惯打卡与今日页 | ⏸ 未开始 | 依赖 S2（集成依赖 S4） |
-| S6 日历、统计、补打与站内提醒 | ⏸ 未开始 | 依赖 S4、S5 |
-| S7 私有文件、后台任务与解析 | ⏸ 未开始 | 依赖 S1、S2 |
-| S8 导入校对、去重与确认入库 | ⏸ 未开始 | 依赖 S3、S7 |
-| S9 导出、全链路验收、部署与加固 | ⏸ 未开始 | 依赖 S6、S8 |
+| S0 规格、工程骨架与质量门禁 | ✅ 已完成 | 原 GATE-S0 已通过；精简规格文档已重构 |
+| S1 认证、会话与用户隔离 | 🔄 进行中 | S1-DB-01、S1-DB-02、S1-BE-01 已完成；下一步 S1-BE-02 登录 |
+| S2 清单任务与 daily 计划 | ⏸ 未开始 | 依赖 S1 |
+| S3 条目、xlsx 导入、分配顺延 | ⏸ 未开始 | 依赖 S2 |
+| S4 文字题解、完成/撤销、自动打卡 | ⏸ 未开始 | 依赖 S3 |
+| S5 今日页 | ⏸ 未开始 | 依赖 S4 |
+| S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
+| S7 部署、安全与全链路验收 | ⏸ 未开始 | 依赖 S6 |
 
-## 步骤日志（最新在上）
+## 已完成步骤
 
-### 2026-08-19 — S1-BE-01 完成 ✅
+### S0 阶段
 
-- **步骤**：S1-BE-01 实现邮箱注册
-- **所有者**：后端 Agent
-- **交付物**：`auth` 模块（Argon2id 编码器、注册服务/控制器、DTO、业务异常、统一错误响应、最小安全配置）
-- **内容**：
-  - 规范化邮箱（小写+去首尾空白），数据库生成列口径一致；重复邮箱稳定冲突 `EMAIL_TAKEN`(409)，不暴露内部异常。
-  - 密码/确认密码校验（长度 8-128、一致性），非法抛 422。
-  - `Argon2idPasswordEncoder`（PHC `$argon2id$v=19$...`，64 MiB / 迭代 3 / 并行 4，16 字节盐 / 32 字节哈希），禁止明文。
-  - 单实例内存限流（5 次失败 / 15 分钟 / IP+邮箱，§3.4），超限 429。
-  - 统一响应 `{ data, requestId }` / `{ error{code,message}, requestId }`；日志不记录密码/完整请求体。
-- **测试**：TEST-S1-BE-01-01（API，远程 MySQL 8 测试库）6 项通过
-  - 有效注册成功且库中仅存 Argon2id 哈希、可回放校验通过
-  - 大小写 / 首尾空白变体邮箱 → 409 且不建用户
-  - 弱密码、不一致确认密码、非法邮箱 → 422 且不建用户
-- **回归**：后端全量 14 项测试通过，BUILD SUCCESS
-  - FlywayMigrationTests(2)、UserSessionMigrationTests(5)、TimeClockApplicationTests(1，已改为连接测试库验证上下文)
-- **提交**：`e8f1f30` "S1-BE-01 实现邮箱注册（TEST-S1-BE-01-01 API 测试通过）"
-- **下游依赖**：S1-BE-02（登录与 Session，复用 Argon2id 编码器与统一错误响应）
+- S0-ARC-01 需求追踪与决策登记：已完成，原始审计通过。
+- S0-ARC-02 状态机与时间规则：已完成；精简范围已重新冻结。
+- S0-API-01 OpenAPI 基线：已完成；后续需按精简契约删除无关端点。
+- S0-OPS-01 仓库治理：已完成；精简文档已同步。
+- S0-BE-01 Java 21 后端骨架：已完成。
+- S0-DB-01 MySQL/Flyway 基线：已完成，连接远程测试库。
+- S0-FE-01 React 前端骨架：已完成。
+- S0-QA-01 分层测试：已完成；精简夹具规则已同步。
+- S0-OPS-02 CI 门禁：已完成；精简门禁文档已同步。
 
-### 2026-08-19 — S1-DB-01 完成 ✅
+### S1 阶段
 
-- **步骤**：S1-DB-01 建立用户与会话模型
-- **所有者**：数据库 Agent
-- **交付物**：`backend/src/main/resources/db/migration/V2__user_session.sql`
-- **内容**：
-  - `users`：邮箱唯一（`uk_users_email` + 生成列 `email_normalized` 兜底大小写/空白规范化，数据库是正确性来源）、`password_hash`（Argon2id）、`timezone`、`overdue_reminder_visible`、`status`、`version`（乐观锁）、审计字段。
-  - `user_sessions`：`token_hash` 唯一（SHA-256 十六进制）、`expires_at`、`last_accessed_at`、`revoked_at`、`device_summary`；按 `user_id` 与 `(revoked_at, expires_at)` 索引；FK 归属 `users`。
-  - 禁止明文密码 / 明文会话令牌（schema 仅含哈希列）。
-- **测试**：TEST-S1-DB-01-01（数据库集成，远程 MySQL 8 测试库）通过
-  - 大小写变体邮箱拒绝（唯一约束）；空白变体邮箱拒绝（生成列兜底）
-  - 并发插入相同邮箱 8 线程仅 1 条成功；重复会话令牌哈希拒绝
-  - 无明文 password/token 列，存储值具备哈希形态
-  - `FlywayMigrationTests`（TEST-S0-DB-01-01 回归）2 项通过：Successfully validated 2 migrations，无漂移
-  - 后端全量 8 项测试通过，BUILD SUCCESS
-- **提交**：`b9d8347` "S1-DB-01 建立用户与会话模型（TEST-S1-DB-01-01 集成测试通过）"
-- **下游依赖**：S1-BE-01（邮箱注册，依赖 users 表）、S1-BE-02（登录与 Session，依赖 user_sessions 表）
+- S1-DB-01 用户与会话模型：已完成，迁移 `V2__user_session.sql`。
+- S1-DB-02 精简范围修正迁移：已完成，新增 `V3__drop_unused_user_columns.sql` 移除 `users.overdue_reminder_visible` 与 `users.version`；注册代码、UserView、Flyway/数据库/注册测试已同步，并在独立远程 MySQL 8 `time_clock_test` 上验证通过。
+- S1-BE-01 邮箱注册：已完成，Argon2id、邮箱规范化、限流和 API 测试通过。
 
-### 2026-08-19 — S0-ARC-01 完成 ✅
+## 精简范围修正
 
-- **步骤**：S0-ARC-01 建立需求追踪和决策登记
-- **所有者**：协调 Agent
-- **交付物**：`memory-bank/requirements-tracking-V1.0.md`
-- **内容**：19 项 REQ + 24 项 DEC 登记；107 个原子步骤反向来源审计
-- **测试**：TEST-S0-ARC-01-01（文档审计）通过
-  - REQ 覆盖 19/19，DEC 覆盖 24/24，步骤覆盖 107/107
-  - 无无步骤需求，无无来源步骤，未决项 = 0
-- **提交**：`0b6b472` "S0-ARC-01 建立 V1.0 需求追踪与决策登记（TEST-S0-ARC-01-01 通过）"
-- **下游依赖**：S0-ARC-02（冻结状态机与时间规则）、S0-API-01（OpenAPI 基线）依赖本表
+- S1-DB-02 已完成：新增 Flyway V3 修正迁移移除精简 V1.0 不再使用的 `users.overdue_reminder_visible` 与 `users.version`，并同步认证代码、UserView 及测试；独立远程 MySQL 8 测试库验收通过。
 
-## 待办
+## 下一步
 
-- [x] S0-ARC-01 建立需求追踪和决策登记
-- [x] S0-ARC-02 冻结状态机与时间规则
-- [x] S0-API-01 建立 OpenAPI 基线
-- [x] S0-OPS-01 初始化仓库治理
-- [x] S0-BE-01 初始化 Java 21 后端工程
-- [x] S0-DB-01 建立 MySQL 与 Flyway 基线
-- [x] S0-FE-01 初始化 React 前端工程
-- [x] S0-QA-01 建立分层测试基础
-- [x] S0-OPS-02 建立持续集成门禁
-- [x] **GATE-S0（阶段门禁）— 已通过**
-- [x] S1-DB-01 建立用户与会话模型
-- [x] S1-BE-01 实现邮箱注册
-- [ ] S1-BE-02 实现登录与数据库 Session（下一阶段第三步骤）
+- [x] S1-DB-02 精简范围修正迁移：移除 `users.overdue_reminder_visible` 与 `users.version`，并同步认证代码与测试；远程 MySQL 验收通过。
+- [ ] S1-BE-02 实现登录与数据库 Session（依赖 S1-DB-02）。
+- [ ] S1-BE-03 实现当前用户、登出和续期。
+- [ ] S1-BE-04 强制 CSRF。
+- [ ] S1-BE-05 资源归属拦截。
+- [ ] S1-FE-01 统一 API 客户端。
+- [ ] S1-FE-02 注册/登录/会话恢复页面。
+- [ ] S1-QA-01 多端会话与隔离 E2E。
+- [ ] GATE-S1。
+
+## 精简变更记录
+
+- V1.0 仅清单型任务，删除习惯型。
+- 题目导入改为 xlsx 同步解析、预览、简单标题去重、确认入库。
+- 删除 PDF/DOCX/OCR、图片题解、文件存储、异步导入和复杂去重。
+- 保留打卡记录、连续天数、月历和补打。
+- 删除暂停/归档/软删除/提前完成，任务删除改为物理删除。
+- 认证保留邮箱、Session、CSRF；去掉复杂多端编辑冲突和导出。
 
 ## 参考
 
-- 需求追踪与决策登记：`memory-bank/requirements-tracking-V1.0.md`
-- 实施计划：`memory-bank/TimeClock-V1.0-implementation-plan.md`
+- `memory-bank/PRD.md`
+- `memory-bank/TimeClock-V1.0-implementation-plan.md`
+- `memory-bank/requirements-tracking-V1.0.md`
+- `memory-bank/state-machine-and-time-rules-V1.0.md`

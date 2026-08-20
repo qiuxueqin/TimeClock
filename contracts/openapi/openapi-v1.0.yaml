@@ -1765,7 +1765,7 @@ components:
     UserView:
       type: object
       additionalProperties: false
-      required: [id, email, timezone, overdueReminderVisible]
+      required: [id, email, timezone]
       properties:
         id:
           type: string
@@ -1776,9 +1776,6 @@ components:
         timezone:
           type: string
           description: IANA 时区名，如 Asia/Shanghai。
-        overdueReminderVisible:
-          type: boolean
-          description: 站内逾期提示显示偏好。REQ-USER-01。
     CsrfToken:
       type: object
       additionalProperties: false
@@ -1792,13 +1789,11 @@ components:
     UserSettings:
       type: object
       additionalProperties: false
-      required: [timezone, overdueReminderVisible]
+      required: [timezone]
       properties:
         timezone:
           type: string
           description: IANA 时区，作为新建任务默认值。DEC-14。
-        overdueReminderVisible:
-          type: boolean
 
     # ============ 任务 ============
     TaskType:

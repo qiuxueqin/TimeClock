@@ -2,42 +2,49 @@ package com.timeclock.auth;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
-/**
- * 最小安全配置（S1-BE-01 阶段）。
- *
- * <p>当前仅允许注册接口通过、禁用默认的 HTTP 基础认证随机密码与 CSRF 校验，
- * 使 S1-BE-01 的注册业务正确性可被 API 测试直接验证。
- *
- * <p>注意：这是临时最小配置，将在后续步骤替换/强化：
- * - S1-BE-02 建立数据库 Session 与 Cookie 签发；
- * - S1-BE-04 启用全局 CSRF 强制（所有写请求必须携带 Token）。
- *
- * <p>会话相关仍交由 Spring Security 默认的 Session 机制；当前不限制端点归属。
- */
 @Configuration
 @EnableWebSecurity
 public class AuthSecurityConfig {
-
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   SessionAuthenticationFilter sessionAuthenticationFilter) throws Exception {
+        CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
+        csrfHandler.setCsrfRequestAttributeName(null);
         http
-                // S1-BE-01：注册接口暂时放行；S1-BE-04 将改为"会话写请求必须 CSRF"
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(csrfHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/register", "/actuator/health").permitAll()
-                        .anyRequest().permitAll())
-                // CSRF 强制推迟到 S1-BE-04（当前步骤先验证注册业务正确性）
-                .csrf(csrf -> csrf.disable())
-                // 禁用默认的 HTTP Basic 与表单登录随机密码（开发最小化）
+                        .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/csrf", "/actuator/health").permitAll()
+                        .requestMatchers("/api/v1/auth/me", "/api/v1/auth/logout").authenticated()
+                        .anyRequest().authenticated())
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, exception) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write("{\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"请先登录\"}}");
+                        })
+                        .accessDeniedHandler((request, response, exception) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write("{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"无权执行此操作\"}}");
+                        }))
+                .addFilterBefore(sessionAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

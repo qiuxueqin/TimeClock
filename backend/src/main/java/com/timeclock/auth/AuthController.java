@@ -1,39 +1,76 @@
 package com.timeclock.auth;
 
+import java.util.Map;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.timeclock.auth.dto.CsrfTokenResponse;
+import com.timeclock.auth.dto.LoginRequest;
+import com.timeclock.auth.dto.LoginResponse;
 import com.timeclock.auth.dto.RegisterRequest;
 import com.timeclock.auth.dto.RegisterResponse;
+import com.timeclock.auth.dto.UserView;
 import com.timeclock.common.RequestContext;
 
-/**
- * 认证 REST 控制器：注册（S1-BE-01，REQ-AUTH-01）。
- *
- * <p>路径：POST /api/v1/auth/register。注册成功返回当前用户视图；
- * 失败由 {@code ApiExceptionHandler} 映射为 EnvelopeError。
- *
- * <p>注意：注册写操作需要 CSRF（token 经 GET /auth/csrf 获取，注册前即可获取），
- * S1-BE-04 将启用全局 CSRF 强制；当前步骤先建立业务正确性，CSRF 门禁由 S1-BE-04 验证。
- */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
-
     private final AuthService authService;
+    private final SessionService sessionService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, SessionService sessionService) {
         this.authService = authService;
+        this.sessionService = sessionService;
     }
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         RegisterResponse response = authService.register(request);
-        return ResponseEntity.ok(java.util.Map.of(
-                "data", response,
-                "requestId", RequestContext.requestId()));
+        return ok(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest,
+                                   HttpServletResponse httpResponse) {
+        LoginResponse response = authService.login(request, httpRequest.getHeader("User-Agent"));
+        httpResponse.addHeader("Set-Cookie", AuthCookie.session(response.rawToken(),
+                java.time.Instant.now().plus(SessionService.SESSION_LIFETIME)).toString());
+        return ok(response);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> me(Authentication authentication) {
+        if (!(authentication != null && authentication.getPrincipal() instanceof SessionAuthenticationFilter.AuthenticatedUser user)) {
+            throw new BusinessException("UNAUTHORIZED", "请先登录", 401);
+        }
+        return ok(new UserView(user.id(), user.email(), user.timezone()));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        String raw = SessionAuthenticationFilter.cookie(request, SessionService.COOKIE_NAME);
+        if (raw != null) sessionService.revoke(SessionService.hash(raw));
+        response.addHeader("Set-Cookie", AuthCookie.clear().toString());
+        return ok(Map.of("loggedOut", true));
+    }
+
+    @GetMapping("/csrf")
+    public ResponseEntity<?> csrf(CsrfToken token) {
+        return ok(new CsrfTokenResponse(token.getToken()));
+    }
+
+    private ResponseEntity<?> ok(Object data) {
+        return ResponseEntity.ok(Map.of("data", data, "requestId", RequestContext.requestId()));
     }
 }

@@ -2,6 +2,7 @@ package com.timeclock.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -68,6 +69,7 @@ class AuthRegisterApiTests {
         createdEmails.add(email);
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(email, password, password))))
                 .andExpect(status().isOk())
@@ -75,6 +77,7 @@ class AuthRegisterApiTests {
                 .andExpect(jsonPath("$.data.user.email").value(email))
                 .andExpect(jsonPath("$.data.user.id").isNotEmpty())
                 .andExpect(jsonPath("$.data.user.timezone").value("Asia/Shanghai"))
+                .andExpect(jsonPath("$.data.user.overdueReminderVisible").doesNotExist())
                 .andReturn();
 
         assertThat(result.getResponse().getContentAsString())
@@ -105,6 +108,7 @@ class AuthRegisterApiTests {
 
         // 大写变体注册 → 409，稳定错误码 EMAIL_TAKEN
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(base.toUpperCase(), "OtherPass1!", "OtherPass1!"))))
                 .andExpect(status().isConflict())
@@ -124,6 +128,7 @@ class AuthRegisterApiTests {
         long countBefore = userCount(base);
 
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest("  " + base + "  ", "OtherPass1!", "OtherPass1!"))))
                 .andExpect(status().isConflict())
@@ -138,6 +143,7 @@ class AuthRegisterApiTests {
     void weakPasswordReturnsValidationError() throws Exception {
         String email = "weak-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(email, "short", "short"))))
                 .andExpect(status().isUnprocessableEntity())
@@ -153,6 +159,7 @@ class AuthRegisterApiTests {
     void mismatchedConfirmPasswordReturnsValidationError() throws Exception {
         String email = "mismatch-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(email, "CorrectHorse1!", "WrongHorse1!"))))
                 .andExpect(status().isUnprocessableEntity())
@@ -167,6 +174,7 @@ class AuthRegisterApiTests {
     void invalidEmailFormatReturnsValidationError() throws Exception {
         String email = "not-an-email";
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(email, "CorrectHorse1!", "CorrectHorse1!"))))
                 .andExpect(status().isUnprocessableEntity())
@@ -179,6 +187,7 @@ class AuthRegisterApiTests {
 
     private void registerOk(String email, String password) throws Exception {
         mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(new RegisterRequest(email, password, password))))
                 .andExpect(status().isOk());

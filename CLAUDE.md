@@ -4,7 +4,7 @@ This file provides guidance to [CC] (https://github.com/anthropics/claude) when 
 
 ## What this repository is
 
-A **greenfield** project (no source code, build scripts, or tests committed yet). It is a "学习打卡系统" (learning check-in system): a personal web app for tracking study tasks. Users create two kinds of tasks — **清单型** (checklist: solve N questions/day, each requiring a written user solution) and **习惯型** (habit: just confirm "done today") — track daily progress, streaks, a calendar, and import questions from PDF/DOCX/CSV.
+This is a **small-scope** project (source code and tests are present). It is a "学习打卡系统" (learning check-in system): a personal web app for checklist-based study tasks. V1.0 supports only **清单型** tasks: solve N questions/day, write a text solution for each, track daily progress, streaks, calendar, makeup check-ins, and import questions from xlsx.
 
 All current content is **specification** in `memory-bank/`. Code must be built from these specs; do not assume anything not stated there is in scope.
 
@@ -14,25 +14,25 @@ All current content is **specification** in `memory-bank/`. Code must be built f
 - `memory-bank/backend-tech-stack-V1.0.md` — backend architecture & tech choices.
 - `memory-bank/frontend-tech-stack-V1.0.md` — frontend architecture & tech choices.
 - `memory-bank/TimeClock-V1.0-implementation-plan.md` — **the executable build order**. Contains every requirement (`REQ-*`), frozen decision (`DEC-*`), atomic step (`S{stage}-{domain}-{n}`), test (`TEST-*`), and stage gate (`GATE-S{stage}`). This is the blueprint AI agents are expected to implement step-by-step.
-- `memory-bank/architecture.md`, `memory-bank/progress.md` — currently empty placeholders.
+- `memory-bank/architecture.md`, `memory-bank/progress.md` — current architecture and implementation progress.
 
 **Precedence when docs conflict** (from implementation-plan §0.1): frozen decisions & domain invariants > API/state/data constraints & acceptance criteria > PRD V1.0 scope > tech-stack docs > examples/sketches. Unresolvable conflicts are to be surfaced to the coordinating user, **not** resolved by expanding scope.
 
 ## Tech baseline (fixed; do not deviate)
 
-- **Backend**: Java 21 LTS, Spring Boot 3.x, Spring MVC, Spring Security, MySQL 8 + Flyway, PDFBox 3.x, POI 5.x, OpenCSV, JUnit 5 + Mockito. Modular monolith — a single deployable Spring Boot app.
+- **Backend**: Java 21 LTS, Spring Boot 3.x, Spring MVC, Spring Security, MySQL 8 + Flyway, Apache POI 5.x for xlsx, JUnit 5 + Mockito. Remote MySQL 8 is used for integration tests; credentials are environment-injected only.
 - **Frontend**: TypeScript 5.x, React 19, Vite 6.x, React Router 7.x, Ant Design 5.x, TanStack Query 5.x, React Hook Form 7.x + Zod 3.x, native `fetch`, CSS Modules, Day.js. Single SPA.
-- **Tests**: JUnit 5 + a **remote MySQL 8 instance** (env-var injected only; no Testcontainers, no local MySQL). Frontend: Vitest + React Testing Library + MSW + Playwright.
-- **Deploy**: one app + one MySQL + one persistent file volume, same-origin HTTPS via Docker Compose + reverse proxy (Nginx/Caddy).
+- **Tests**: JUnit 5 + remote MySQL 8; frontend: Vitest + React Testing Library + MSW + Playwright.
+- **Deploy**: one app + one MySQL, same-origin HTTPS. No file volume is required in the reduced V1.0 scope.
 
 The `.idea/` directory may contain stale JDK 1.8 config — ignore it; the project baseline is Java 21. Planned build/test commands will be established in stage S0 (`S0-BE-01`, `S0-FE-01`, `S0-QA-01`); record them here once they exist.
 
 ## Architecture at a glance
 
-Backend modules (package/module boundaries per the backend doc §3.1): `auth`, `user`, `task`, `schedule`, `item`, `submission`, `file`, `importing`, `job`, `audit`. Frontend feature dirs (per frontend doc §3.2): `app`, `api`, `features/{auth,dashboard,tasks,items,checkins,imports}`, `components`, `hooks`, `lib`, `styles`, `test`.
+Backend modules (reduced scope): `auth`, `user`, `task`, `schedule`, `item`, `checkin`, `importing`, `audit`. Frontend feature dirs: `app`, `api`, `features/{auth,dashboard,tasks,items,checkins,imports}`, `components`, `hooks`, `lib`, `styles`, `test`.
 
 ### Explicitly rejected tech (do not add without escalating)
-Redis, RabbitMQ, object storage, microservices, JWT (sessions are DB-backed cookies + CSRF), WebSockets/SSE, PWA/service workers/offline write queues, Next.js/SSR, Redux/Zustand, Tailwind, OCR (images and image-PDFs are stored, never auto-parsed), GraphQL, BFF, browser/email/SMS notifications. V1.1/V1.2/V2.0 features must not be built.
+Redis, RabbitMQ, object storage, file upload/storage, PDF/DOCX/OCR parsing, microservices, JWT (sessions are DB-backed cookies + CSRF), WebSockets/SSE, PWA/service workers/offline write queues, Next.js/SSR, Redux/Zustand, Tailwind, GraphQL, BFF, browser/email/SMS notifications, habit tasks, task pause/archive/soft-delete, early completion, complex export, and all V1.1+ features.
 
 ## Non-obvious domain invariants (hard to rediscover; must hold)
 
@@ -56,6 +56,10 @@ These recur throughout the spec and are easy to get wrong:
 - **Single-owner shared files**: root build files, route tables, the shared API client, global enums, the migration directory, and E2E fixtures each have exactly one owner at a time.
 - **Flyway migrations are immutable** once merged — add corrective migrations, never edit existing ones.
 - **Git**: Chinese commit messages; one commit per atomic step; advance on `main` only, no feature branches. Revert to §4.2 on these if unsure.
+
+## Database configuration and local testing
+
+For this repository, keep the database connection values in `backend/src/main/resources/application.yml` and `backend/src/test/resources/application-test.yml` as the user explicitly maintains them, including the current plain-text local/test credentials. Do not modify either file's database connection configuration or migrate those values to another mechanism. These files are local configuration and do not need to be committed to the repository. When running backend tests, use the test profile and the connection settings from `backend/src/test/resources/application-test.yml`; never replace them with production configuration.
 
 ## Current status
 

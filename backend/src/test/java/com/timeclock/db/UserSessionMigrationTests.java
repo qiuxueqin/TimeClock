@@ -52,7 +52,7 @@ class UserSessionMigrationTests {
 
     @BeforeEach
     void setUp() throws Exception {
-        // 确认 V2 迁移已应用：users 与 user_sessions 表存在
+        // 确认 V2/V3 迁移已应用：users 与 user_sessions 表存在，废弃用户列已移除
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(
@@ -61,6 +61,18 @@ class UserSessionMigrationTests {
                              + "AND table_name IN ('users', 'user_sessions')")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getInt(1)).as("users 与 user_sessions 表应已由 V2 迁移创建").isEqualTo(2);
+            assertThat(hasColumn(conn, "users", "overdue_reminder_visible"))
+                    .as("V3 后 users 不应存在 overdue_reminder_visible 列")
+                    .isFalse();
+            assertThat(hasColumn(conn, "users", "version"))
+                    .as("V3 后 users 不应存在 version 列")
+                    .isFalse();
+            assertThat(hasColumn(conn, "users", "password_hash"))
+                    .as("users 应保留 password_hash 列")
+                    .isTrue();
+            assertThat(hasColumn(conn, "users", "timezone"))
+                    .as("users 应保留 timezone 列")
+                    .isTrue();
         }
     }
 
@@ -82,9 +94,8 @@ class UserSessionMigrationTests {
     /** 插入一个用户；邮箱未规范化时仍按给定值存储。返回用户 ID。 */
     private String insertUser(String email, String passwordHash) throws SQLException {
         String id = UUID.randomUUID().toString();
-        String sql = "INSERT INTO users (id, email, password_hash, timezone, overdue_reminder_visible, "
-                + "status, version, created_at, updated_at) "
-                + "VALUES (?, ?, ?, 'Asia/Shanghai', 1, 'active', 0, NOW(6), NOW(6))";
+        String sql = "INSERT INTO users (id, email, password_hash, timezone, status, created_at, updated_at) "
+                + "VALUES (?, ?, ?, 'Asia/Shanghai', 'active', NOW(6), NOW(6))";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, id);

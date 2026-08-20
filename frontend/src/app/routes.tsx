@@ -1,15 +1,15 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Home } from '@/app/Home';
+import { AuthenticatedHome, LoginPage, ProtectedRoute, RegisterPage } from '@/features/auth/Auth';
 
-/**
- * 应用路由表（S0-FE-01 骨架）。
- * 所有者：前端 Agent（路由表为单 owner 共享文件）。
- * 完整路由见 frontend-tech-stack-V1.0.md §4；后续阶段逐步接入受保护路由。
- */
 export function AppRoutes() {
-  return (
-    <Routes>
+  return <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/register" element={<RegisterPage />} />
+    <Route element={<ProtectedRoute />}>
       <Route path="/" element={<Home />} />
-    </Routes>
-  );
+      <Route path="/today" element={<AuthenticatedHome />} />
+    </Route>
+    <Route path="*" element={<Navigate to="/today" replace />} />
+  </Routes>;
 }

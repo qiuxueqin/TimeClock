@@ -22,23 +22,37 @@ public final class LoginRateLimiter {
         this.window = window;
     }
 
-    /**
-     * 记录一次失败；若已超过上限则拒绝（返回 false）。
-     * 该键在窗口内达到上限时，后续注册请求被拒绝直至窗口滑过。
-     */
+    /** Returns whether a key may attempt an operation without changing its failure count. */
     public boolean isAllowed(String key) {
         Instant now = Instant.now();
         Bucket b = buckets.computeIfAbsent(key, k -> new Bucket(now));
         synchronized (b) {
-            if (now.isAfter(b.windowStart.plus(window))) {
-                b.windowStart = now;
-                b.count = 0;
+            resetIfExpired(b, now);
+            return b.count < maxFailures;
+        }
+    }
+
+    /** Records one failed attempt. Successful attempts never consume the quota. */
+    public void recordFailure(String key) {
+        Instant now = Instant.now();
+        Bucket b = buckets.computeIfAbsent(key, k -> new Bucket(now));
+        synchronized (b) {
+            resetIfExpired(b, now);
+            if (b.count < maxFailures) {
+                b.count++;
             }
-            if (b.count >= maxFailures) {
-                return false;
-            }
-            b.count++;
-            return true;
+        }
+    }
+
+    /** Clears failures after a successful authentication operation. */
+    public void clear(String key) {
+        buckets.remove(key);
+    }
+
+    private void resetIfExpired(Bucket bucket, Instant now) {
+        if (!now.isBefore(bucket.windowStart.plus(window))) {
+            bucket.windowStart = now;
+            bucket.count = 0;
         }
     }
 

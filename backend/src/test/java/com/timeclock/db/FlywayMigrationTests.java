@@ -28,16 +28,16 @@ class FlywayMigrationTests {
     @Autowired
     private DataSource dataSource;
 
-    /** 校验 Flyway 迁移历史表已创建，且基线迁移已成功应用。 */
+    /** 校验 Flyway 迁移历史表已创建，且 V1/V2/V3 迁移已成功应用。 */
     @Test
     void baselineMigrationAppliedOnCleanTestDb() throws Exception {
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(
-                     "SELECT COUNT(*) FROM information_schema.tables "
-                             + "WHERE table_schema = DATABASE() AND table_name = 'flyway_schema_history'")) {
+                     "SELECT COUNT(*) FROM flyway_schema_history "
+                             + "WHERE success = TRUE AND version IN ('1', '2', '3')")) {
             assertThat(rs.next()).isTrue();
-            assertThat(rs.getInt(1)).as("flyway_schema_history 表应存在").isEqualTo(1);
+            assertThat(rs.getInt(1)).as("V1、V2、V3 迁移应均已成功应用").isEqualTo(3);
         }
     }
 
