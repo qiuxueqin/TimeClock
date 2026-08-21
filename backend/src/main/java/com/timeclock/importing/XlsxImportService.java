@@ -1,6 +1,7 @@
 package com.timeclock.importing;
 
 import com.timeclock.auth.BusinessException;
+import com.timeclock.common.IdempotencyService;
 import com.timeclock.importing.dto.*;
 import com.timeclock.item.dto.ItemView;
 import com.timeclock.task.TaskService;
@@ -21,11 +22,12 @@ public class XlsxImportService {
     private static final List<String> HEADERS = List.of("title", "content", "analysis", "link", "order");
     private final JdbcTemplate jdbc;
     private final TaskService tasks;
-    private final Map<String, XlsxConfirmResponse> idempotent = new ConcurrentHashMap<>();
+    private final IdempotencyService idempotency;
 
-    public XlsxImportService(JdbcTemplate jdbc, TaskService tasks) {
+    public XlsxImportService(JdbcTemplate jdbc, TaskService tasks, IdempotencyService idempotency) {
         this.jdbc = jdbc;
         this.tasks = tasks;
+        this.idempotency = idempotency;
     }
 
     public XlsxPreviewResponse preview(String userId, String taskId, MultipartFile file) {
@@ -69,9 +71,7 @@ public class XlsxImportService {
     @Transactional
     public XlsxConfirmResponse confirm(String userId, String taskId, String key, XlsxConfirmRequest request) {
         tasks.get(userId, taskId);
-        if (key == null || key.isBlank() || key.length() > 128) throw invalid("Idempotency-Key 无效");
-        String cacheKey = userId + ":" + taskId + ":" + key;
-        XlsxConfirmResponse prior = idempotent.get(cacheKey);
+        XlsxConfirmResponse prior = idempotency.begin(userId, taskId, "xlsx-confirm", key, request, XlsxConfirmResponse.class);
         if (prior != null) return prior;
         if (request == null || request.candidates() == null || request.candidates().isEmpty()) throw invalid("候选条目不能为空");
         Set<String> seen = existingTitles(taskId);
@@ -88,8 +88,8 @@ public class XlsxImportService {
             created++;
         }
         XlsxConfirmResponse result = new XlsxConfirmResponse(created, skipped);
-        idempotent.putIfAbsent(cacheKey, result);
-        return idempotent.get(cacheKey);
+        idempotency.complete(userId, taskId, "xlsx-confirm", key, result);
+        return result;
     }
 
     private Set<String> existingTitles(String taskId) {
