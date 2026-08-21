@@ -7,7 +7,7 @@
 | S0 规格、工程骨架与质量门禁 | ✅ 已完成 | 原 GATE-S0 已通过；精简规格文档已重构 |
 | S1 认证、会话与用户隔离 | ✅ 已完成 | S1 认证主链路、前端登录注册、CSRF、Session 生命周期与验收测试已交付；S1 以 c04da74 提交并进入 S2 |
 | S2 清单任务与 daily 计划 | 🟡 实现完成，GATE-S2 待补齐 | S2 后端/数据库/计划计算/前端已实现；成功启用 E2E 依赖 S3 条目，前端任务专属组件/MSW 测试仍需补齐 |
-| S3 条目、xlsx 导入、分配顺延 | ⏭ 下一步 | 依赖 S2 契约、任务模型和任务管理接口 |
+| S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、条目 CRUD/粘贴、同步 POI xlsx 预览确认、标题去重、activate 成功路径、today pending 顺序切片和前端入口已实现；幂等持久化与完整跨日事实等待后续 checkin 阶段 |
 | S4 文字题解、完成/撤销、自动打卡 | ⏸ 未开始 | 依赖 S3 |
 | S5 今日页 | ⏸ 未开始 | 依赖 S4 |
 | S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
@@ -56,13 +56,13 @@
 - S1-FE-02 注册/登录/会话恢复页面：已完成，登录/注册互链、受保护路由、刷新恢复和登出已实现。
 - S1-QA-01 多端会话与隔离 E2E：已完成基础 Playwright 双上下文用例；真实资源越权 E2E 待 S2 资源出现后按模板扩展。
 
-### 下一步工作
+- S3 已实现主要纵向切片：OpenAPI 已收缩为 pending/completed 和同步 xlsx preview/confirm；V5 `learning_items` 使用任务级序号唯一与 `ON DELETE CASCADE`；后端支持条目 CRUD、粘贴预览/确认、POI xlsx 预览/确认、规范化标题默认跳过和 draft→active 条目检查；today endpoint 在无 checkin 事实时按任务时区返回 pending 顺序切片；前端加入条目、xlsx 导入和今日入口。
 
 1. **补齐 S2 验收缺口并决定是否通过 GATE-S2**：新增任务 feature 的 RTL/MSW 测试（空列表、分页、非法目标、删除取消/确认、失败保留输入、404/403 错误），修复并验证 DELETE 204 的前端路径；补充移动端 Playwright 任务页面无横向溢出。
 2. **开始 S3-API-01**：冻结学习条目、手工/粘贴/xlsx 预览确认、顺序分配和顺延契约；明确正式条目的确认语义，解除 S2 activate 成功路径依赖。
 3. **实施 S3-DB-01**：新增 `learning_items` 迁移，状态仅 `pending/completed`，任务内 `sort_order` 唯一，并定义任务删除时的关联清理策略。
 4. **实施 S3-BE-01/S3-BE-02/S3-BE-03**：手工/粘贴条目、xlsx 同步解析预览、标题去重与确认入库；随后回接任务 activate 的已确认条目检查并补充 draft→active 成功 E2E。
-5. S3 完成后再实施 S3-BE-04/S3-FE-02 的按序分配、未完成顺延和今日条目页面。
+5. S3 完成后再实施 S3-BE-04/S3-FE-02 的按序分+配、未完成顺延和今日条目页面。
 
 
 - S1-DB-02 已完成：新增 Flyway V3 修正迁移移除精简 V1.0 不再使用的 `users.overdue_reminder_visible` 与 `users.version`，并同步认证代码、UserView 及测试；独立远程 MySQL 8 测试库验收通过。

@@ -413,10 +413,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: status
-          in: query
-          schema:
-            $ref: '#/components/schemas/ItemStatus'
         - name: page
           in: query
           schema:
@@ -587,11 +583,6 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: If-Match-Version
-          in: header
-          required: true
-          schema:
-            type: integer
       requestBody:
         required: true
         content:
@@ -605,27 +596,6 @@ paths:
           $ref: '#/components/responses/Conflict'
         '401':
           $ref: '#/components/responses/Unauthorized'
-    delete:
-      tags: [items]
-      summary: 归档条目（软）
-      operationId: archiveItem
-      description: 有历史/已完成条目改为归档而非硬删除（S3-BE-01）。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
   # ============ 今日计划 / 分配（S3） ============
   /tasks/{taskId}/today-items:
     get:
@@ -941,11 +911,6 @@ paths:
           schema:
             type: string
             format: date
-        - name: If-Match-Version
-          in: header
-          required: true
-          schema:
-            type: integer
         - name: Idempotency-Key
           in: header
           required: true
@@ -1263,25 +1228,32 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  # ============ 导入（S7/S8） ============
-  /imports/{batchId}:
-    get:
+  # ============ xlsx 导入（S3） ============
+  /tasks/{taskId}/imports/xlsx/preview:
+    post:
       tags: [imports]
-      summary: 导入批次状态
-      operationId: getImportBatch
-      description: 前端按状态轮询；REVIEW_READY/COMPLETED/FAILED 终态停止。状态 DEC-16。
+      summary: 预览 xlsx 导入
+      operationId: previewXlsxImport
+      description: 以 multipart/form-data 上传 xlsx；服务端在请求内同步用 POI 解析固定列 title、content、analysis、link、order，返回候选项和错误行。预览不写正式条目，不创建导入批次或后台任务。
       security:
         - sessionCookie: []
+        - csrf: []
       parameters:
-        - name: batchId
+        - name: taskId
           in: path
           required: true
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/XlsxPreviewRequest'
       responses:
         '200':
-          description: 批次状态。
+          description: xlsx 解析预览。
           content:
             application/json:
               schema:
@@ -1290,273 +1262,26 @@ paths:
                 required: [data, requestId]
                 properties:
                   data:
-                    $ref: '#/components/schemas/ImportBatchView'
+                    $ref: '#/components/schemas/XlsxPreviewResponse'
                   requestId:
                     type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates:
-    get:
-      tags: [imports]
-      summary: 候选题列表
-      operationId: listCandidates
-      description: 分页+稳定排序；含统计；低置信度需显式确认。
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            default: 20
-        - name: lowConfidence
-          in: query
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: 候选分页。
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [data, requestId]
-                properties:
-                  data:
-                    $ref: '#/components/schemas/ImportCandidatePage'
-                  requestId:
-                    type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates/stats:
-    get:
-      tags: [imports]
-      summary: 候选统计
-      operationId: candidateStats
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 候选统计。
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [data, requestId]
-                properties:
-                  data:
-                    $ref: '#/components/schemas/CandidateStats'
-                  requestId:
-                    type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates/{candidateId}:
-    patch:
-      tags: [imports]
-      summary: 编辑候选
-      operationId: updateCandidate
-      description: 版本号；冲突 409。编辑不覆盖原始片段（rawFragment 保留）。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: candidateId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: If-Match-Version
-          in: header
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CandidateUpdateRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    delete:
-      tags: [imports]
-      summary: 删除候选
-      operationId: deleteCandidate
-      description: 仅删除候选，不影响正式条目。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: candidateId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates/{candidateId}/split:
+        '413':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+  /tasks/{taskId}/imports/xlsx/confirm:
     post:
       tags: [imports]
-      summary: 拆分候选
-      operationId: splitCandidate
-      description: 一条拆为两条，有来源关系与稳定顺序。版本号。
+      summary: 确认 xlsx 导入
+      operationId: confirmXlsxImport
+      description: 在单个事务内按预览候选执行标题去重并追加正式条目；默认跳过重复标题，不覆盖已有条目。无异步批次、轮询、拆分、合并或覆盖操作。重复提交以 Idempotency-Key 返回首次结果。
       security:
         - sessionCookie: []
         - csrf: []
       parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: candidateId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CandidateSplitRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates/{candidateId}/merge:
-    post:
-      tags: [imports]
-      summary: 合并候选
-      operationId: mergeCandidate
-      description: 连续候选合并成一条；保留所选内容与来源页范围。版本号。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: candidateId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CandidateMergeRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/candidates/{candidateId}/action:
-    patch:
-      tags: [imports]
-      summary: 设置候选重复处理动作
-      operationId: setCandidateAction
-      description: 三种动作：skip/keep_new/merge；默认 skip；无覆盖（DEC-18）。merge 需目标条目（同任务）。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: batchId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: candidateId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: If-Match-Version
-          in: header
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CandidateActionRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /imports/{batchId}/confirm:
-    post:
-      tags: [imports]
-      summary: 确认入库
-      operationId: confirmImport
-      description: 幂等键；事务内执行新增/跳过/合并、统计、审计；批次 CONFIRMING→COMPLETED。低置信度未确认或候选版本过期无副作用。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: batchId
+        - name: taskId
           in: path
           required: true
           schema:
@@ -1567,16 +1292,17 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            minLength: 1
+            maxLength: 128
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ConfirmImportRequest'
+              $ref: '#/components/schemas/XlsxConfirmRequest'
       responses:
         '200':
-          description: 确认结果。
+          description: xlsx 确认入库结果。
           content:
             application/json:
               schema:
@@ -1585,13 +1311,16 @@ paths:
                 required: [data, requestId]
                 properties:
                   data:
-                    $ref: '#/components/schemas/ConfirmImportResponse'
+                    $ref: '#/components/schemas/XlsxConfirmResponse'
                   requestId:
                     type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/BadRequest'
+
 
   # ============ 导出（S9） ============
   /export:
@@ -1873,7 +1602,7 @@ components:
     # ============ 学习条目 ============
     ItemStatus:
       type: string
-      enum: [pending, completed, archived]
+      enum: [pending, completed]
     ItemView:
       type: object
       additionalProperties: false
@@ -1915,9 +1644,6 @@ components:
           type: string
           format: date-time
           nullable: true
-        version:
-          type: integer
-          description: 条目版本（题解相关编辑使用）。
     ItemPage:
       type: object
       additionalProperties: false
@@ -2451,209 +2177,114 @@ components:
       type: object
       description: 以 application/octet-stream 流式返回，响应头含 Content-Disposition（原名）。
 
-    # ============ 导入 ============
-    ImportBatchStatus:
-      type: string
-      enum: [PENDING, PROCESSING, REVIEW_READY, CONFIRMING, COMPLETED, FAILED]
-      description: DEC-16。
-    ImportBatchView:
+    # ============ xlsx 导入 ============
+    XlsxPreviewRequest:
       type: object
       additionalProperties: false
-      required: [batchId, taskId, status, fileName, fileType]
+      required: [file]
       properties:
-        batchId:
+        file:
           type: string
-          format: uuid
-        taskId:
-          type: string
-          format: uuid
-        status:
-          $ref: '#/components/schemas/ImportBatchStatus'
-        fileName:
-          type: string
-        fileType:
-          type: string
-          enum: [pdf, docx, csv]
-        fileId:
-          type: string
-          format: uuid
-        declaredItemCount:
-          type: integer
-          nullable: true
-        recognizedItemCount:
-          type: integer
-        confirmedItemCount:
-          type: integer
-        failureSummary:
-          type: string
-          nullable: true
-          description: 受控错误摘要，不泄漏堆栈/路径。
-        createdAt:
-          type: string
-          format: date-time
-    CandidateDuplicateCategory:
-      type: string
-      enum: [none, exact_duplicate, similar_duplicate]
-      description: 精确重复/疑似重复/新增。DEC-18。
-    CandidateAction:
-      type: string
-      enum: [skip, keep_new, merge]
-      description: 三种处理动作，无覆盖。默认 skip。DEC-18。
-    ImportCandidateView:
+          format: binary
+          description: 仅支持 .xlsx；服务端校验 MIME、扩展名和内容并同步解析。
+    XlsxPreviewResponse:
       type: object
       additionalProperties: false
-      required: [candidateId, title, sortOrder, duplicateCategory, action, version]
+      required: [totalRows, validRows, errorRows, candidates]
       properties:
-        candidateId:
+        totalRows:
+          type: integer
+          minimum: 0
+        validRows:
+          type: integer
+          minimum: 0
+        errorRows:
+          type: array
+          items:
+            $ref: '#/components/schemas/XlsxErrorRow'
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/XlsxCandidate'
+    XlsxErrorRow:
+      type: object
+      additionalProperties: false
+      required: [rowNumber, reason]
+      properties:
+        rowNumber:
+          type: integer
+          minimum: 1
+        reason:
           type: string
-          format: uuid
+    XlsxCandidate:
+      type: object
+      additionalProperties: false
+      required: [title, content, analysis, link, order, duplicate]
+      properties:
         title:
           type: string
-        sortOrder:
-          type: integer
-          description: 候选序号，稳定排序依据。
+          minLength: 1
+          maxLength: 255
         content:
           type: string
           nullable: true
         analysis:
           type: string
           nullable: true
-        sourcePageStart:
-          type: integer
-          nullable: true
-        sourcePageEnd:
-          type: integer
-          nullable: true
-        rawFragment:
+        link:
           type: string
           nullable: true
-          description: 原始片段，编辑不被覆盖，供追溯。
-        parseConfidence:
-          type: number
+        order:
+          type: integer
           nullable: true
-        lowConfidence:
+        duplicate:
           type: boolean
-          description: 仅靠问句规则识别等情形为 true，需显式确认。S7-BE-05。
-        duplicateCategory:
-          $ref: '#/components/schemas/CandidateDuplicateCategory'
-        similarToItemTitle:
-          type: string
-          nullable: true
-          description: 疑似重复时展示已有题摘要。
-        similarToItemId:
-          type: string
-          format: uuid
-          nullable: true
-        action:
-          $ref: '#/components/schemas/CandidateAction'
-        mergeTargetItemId:
-          type: string
-          format: uuid
-          nullable: true
-          description: merge 时目标条目（同任务）。
-        version:
-          type: integer
-    ImportCandidatePage:
+          description: 标题规范化后与当前任务已有条目重复；确认默认跳过。
+    XlsxConfirmRequest:
       type: object
       additionalProperties: false
-      required: [items, page, pageSize, total]
+      required: [candidates]
       properties:
-        items:
+        candidates:
           type: array
           items:
-            $ref: '#/components/schemas/ImportCandidateView'
-        page:
-          type: integer
-        pageSize:
-          type: integer
-        total:
-          type: integer
-    CandidateStats:
+            $ref: '#/components/schemas/XlsxConfirmCandidate'
+    XlsxConfirmCandidate:
       type: object
       additionalProperties: false
-      required: [recognizedCount, withAnalysisCount, withoutAnalysisCount, lowConfidenceCount]
-      properties:
-        recognizedCount:
-          type: integer
-        withAnalysisCount:
-          type: integer
-        withoutAnalysisCount:
-          type: integer
-        lowConfidenceCount:
-          type: integer
-    CandidateUpdateRequest:
-      type: object
-      additionalProperties: false
-      required: [version]
+      required: [title, action]
       properties:
         title:
           type: string
+          minLength: 1
+          maxLength: 255
         content:
           type: string
+          nullable: true
         analysis:
           type: string
-        version:
+          nullable: true
+        link:
+          type: string
+          nullable: true
+        order:
           type: integer
-    CandidateSplitRequest:
-      type: object
-      additionalProperties: false
-      required: [splitAfter, version]
-      properties:
-        splitAfter:
-          type: integer
-          description: 拆分为两条，前一条包含此序号为止。
-        version:
-          type: integer
-    CandidateMergeRequest:
-      type: object
-      additionalProperties: false
-      required: [candidateIds, version]
-      properties:
-        candidateIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-          minItems: 2
-          description: 连续候选合并成一条。S8-BE-02。
-        version:
-          type: integer
-    CandidateActionRequest:
-      type: object
-      additionalProperties: false
-      required: [action, version]
-      properties:
+          nullable: true
         action:
-          $ref: '#/components/schemas/CandidateAction'
-        mergeTargetItemId:
           type: string
-          format: uuid
-          description: merge 时必须，目标条目。
-        version:
-          type: integer
-    ConfirmImportRequest:
+          enum: [skip, keep_new]
+          description: 重复标题默认 skip；keep_new 仅追加新条目，不覆盖已有条目。
+    XlsxConfirmResponse:
       type: object
       additionalProperties: false
-      required: [idempotencyKey]
+      required: [createdCount, skippedCount]
       properties:
-        idempotencyKey:
-          type: string
-          format: uuid
-          description: 幂等确认入库。S8-BE-07。
-    ConfirmImportResponse:
-      type: object
-      additionalProperties: false
-      required: [batchId, createdCount, skippedCount, mergedCount]
-      properties:
-        batchId:
-          type: string
-          format: uuid
         createdCount:
           type: integer
+          minimum: 0
         skippedCount:
           type: integer
-        mergedCount:
-          type: integer
+          minimum: 0
 
     # ============ 导出 ============
     ExportFormat:

@@ -7,7 +7,7 @@
 - S0：规格、工程骨架、CI、远程 MySQL 测试基础已完成并通过 GATE-S0。
 - S1：认证、数据库 Session、CSRF、登录注册前端和基础多端验收已完成；提交 `c04da74`。S2 资源接口必须复用当前用户上下文和归属约束；真实资源越权测试随资源模块落地。
 - S2：任务契约、V4 任务模型、任务创建/读取/列表/编辑/删除、daily 计划计算和基础任务管理前端已实现；后端 46 项独立 MySQL 回归、OpenAPI 校验和前端 typecheck/test/build 已通过。S2 Gate 仍等待 S3 条目模型提供成功 activate 主链路，以及任务专属 MSW/RTL 和移动端 E2E 验收。
-- 精简后的后续主线：S1 → S2 任务 → S3 条目/xlsx → S4 题解/自动打卡 → S5 今日页 → S6 日历/连续/补打 → S7 部署验收。
+- S3：学习条目 V5、手工/粘贴条目、同步 POI xlsx 预览确认、标题去重、草稿启用条目检查、按任务时区返回 pending 顺序切片已实现；完整跨日顺延等待 S4/S6 的日期事实，前端条目/导入路由已加入。
 
 ## 2. 文档地图
 
@@ -51,7 +51,7 @@ MySQL 8（远程实例）
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
-- `learning_items`：题目、解析、顺序、pending/completed、文字题解。
+- `learning_items`：V5 持久化任务条目 `title/content/analysis/external_url`、任务内唯一且从 1 开始的 `sort_order`、`pending/completed` 状态、`solution_text`、`completed_at` 与审计字段；通过 `task_id` 外键 `ON DELETE CASCADE` 随任务物理删除，并有任务+状态+顺序及任务标题索引。
 - `checkins`：按任务+日期唯一，completed/partial/missed/makeup。
 - `idempotency_keys`：完成、撤销、补打、xlsx 确认防重复。
 - `audit_logs`：最小操作审计，不记录题解全文或认证秘密。

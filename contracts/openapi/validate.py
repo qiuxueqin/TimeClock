@@ -63,7 +63,7 @@ def main() -> int:
         ("/tasks/{taskId}/checkins/{date}/complete", "post"),
         ("/tasks/{taskId}/checkins/{date}/edit", "patch"),
         ("/tasks/{taskId}/checkins/{date}/makeup", "post"),
-        ("/imports/{batchId}/confirm", "post"),
+        ("/tasks/{taskId}/imports/xlsx/confirm", "post"),
         ("/tasks/{taskId}/items/paste-confirm", "post"),
     ]
     for p, m in idem:
@@ -137,6 +137,47 @@ def main() -> int:
     if "物理删除" not in delete.get("description", ""):
         errors.append("任务 DELETE 必须明确物理删除")
 
+    # 7. S3 精简条目与同步 xlsx 导入契约断言
+    item_status = schemas.get("ItemStatus", {}).get("enum")
+    if item_status != ["pending", "completed"]:
+        errors.append(f"S3 ItemStatus 必须为 pending/completed，实际为 {item_status}")
+    item_path = paths.get("/items/{itemId}", {})
+    if "delete" in item_path:
+        errors.append("S3 条目不得声明软归档 DELETE")
+    item_patch = item_path.get("patch", {})
+    if any(p.get("name") == "If-Match-Version" for p in item_patch.get("parameters", [])):
+        errors.append("S3 条目 PATCH 不得声明 If-Match-Version")
+    if "version" in schemas.get("ItemUpdateRequest", {}).get("properties", {}):
+        errors.append("S3 ItemUpdateRequest 不得声明 version")
+
+    preview_path = paths.get("/tasks/{taskId}/imports/xlsx/preview", {})
+    confirm_path = paths.get("/tasks/{taskId}/imports/xlsx/confirm", {})
+    for path, method in (("/tasks/{taskId}/imports/xlsx/preview", "post"),
+                         ("/tasks/{taskId}/imports/xlsx/confirm", "post")):
+        if not paths.get(path, {}).get(method):
+            errors.append(f"S3 xlsx 路径缺失: {method.upper()} {path}")
+    preview_content = preview_path.get("post", {}).get("requestBody", {}).get("content", {})
+    if "multipart/form-data" not in preview_content:
+        errors.append("xlsx preview 必须使用 multipart/form-data")
+    if "file" not in schemas.get("XlsxPreviewRequest", {}).get("required", []):
+        errors.append("xlsx preview 必须要求 file")
+    confirm_op = confirm_path.get("post", {})
+    confirm_names = [p.get("name") for p in confirm_op.get("parameters", [])]
+    if "Idempotency-Key" not in confirm_names:
+        errors.append("xlsx confirm 缺 Idempotency-Key")
+    for forbidden in ("/imports/{batchId}", "/imports/{batchId}/candidates",
+                      "/imports/{batchId}/candidates/stats",
+                      "/imports/{batchId}/candidates/{candidateId}",
+                      "/imports/{batchId}/candidates/{candidateId}/split",
+                      "/imports/{batchId}/candidates/{candidateId}/merge",
+                      "/imports/{batchId}/candidates/{candidateId}/action",
+                      "/imports/{batchId}/confirm"):
+        if forbidden in paths:
+            errors.append(f"S3 不得保留异步导入路径: {forbidden}")
+    for forbidden_schema in ("ImportBatchStatus", "ImportBatchView", "ImportCandidateView",
+                             "ImportCandidatePage", "ConfirmImportRequest", "ConfirmImportResponse"):
+        if forbidden_schema in schemas:
+            errors.append(f"S3 不得保留异步导入 schema: {forbidden_schema}")
     if errors:
         for e in errors:
             print(f"[ERROR] {e}")

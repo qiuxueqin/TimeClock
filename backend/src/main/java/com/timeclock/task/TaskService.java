@@ -138,7 +138,13 @@ public class TaskService {
         if (!"draft".equals(task.status())) {
             throw new BusinessException("TASK_STATE_CONFLICT", "任务已经启用，不能重复启用", 409);
         }
-        throw new BusinessException("TASK_ACTIVATION_REQUIRES_ITEM", "任务至少需要一个已确认条目才能启用", 422);
+        Integer itemCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM learning_items WHERE task_id=?", Integer.class, taskId);
+        if (itemCount == null || itemCount == 0) {
+            throw new BusinessException("TASK_ACTIVATION_REQUIRES_ITEM", "任务至少需要一个已确认条目才能启用", 422);
+        }
+        jdbcTemplate.update("UPDATE tasks SET status='active', updated_at=? WHERE id=? AND user_id=?",
+                Instant.now(clock).truncatedTo(ChronoUnit.MICROS), taskId, userId);
+        return findOwned(taskId, userId);
     }
 
 

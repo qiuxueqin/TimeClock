@@ -9,6 +9,21 @@ export type TaskView = {
   dailyTargetCount: number; ended: boolean; itemCount: number; completedItemCount: number;
 };
 export type TaskPage = { items: TaskView[]; page: number; pageSize: number; total: number };
+
+export type ItemStatus = 'pending' | 'completed';
+export type ItemView = {
+  id: string; taskId?: string; title: string; content: string | null; analysis: string | null; externalUrl: string | null;
+  sortOrder: number; status: ItemStatus; solutionText?: string | null; completedAt?: string | null;
+};
+export type ItemPage = { items: ItemView[]; page: number; pageSize: number; total: number };
+export type TodayItem = { item: ItemView; assigned: boolean; belongsToToday: boolean };
+export type TodayItemsResponse = { task: TaskView; plannedCount: number; completedCount: number; items: TodayItem[] };
+export type PasteCandidate = { title: string; content?: string | null; analysis?: string | null; externalUrl?: string | null };
+export type PastePreviewResponse = { totalLines: number; validLines: number; errorLines: { lineNumber: number; reason: string }[]; candidates: PasteCandidate[] };
+export type XlsxCandidate = { title: string; content?: string | null; analysis?: string | null; link?: string | null; order?: number | null; duplicate?: boolean };
+export type XlsxPreviewResponse = { totalRows: number; validRows: number; errorRows: { rowNumber: number; reason: string }[]; candidates: XlsxCandidate[] };
+export type DashboardTodayResponse = { date: string; todayCount: number; completedCount: number; pendingCount: number; completionRate: number; tasks: { task: TaskView; status: string; completedCount: number; plannedCount: number; reminderText?: string | null }[]; currentStreak: number; longestStreak: number };
+
 export type TaskCreateRequest = {
   name: string; description?: string; type: TaskType; startDate: string; endDate?: string | null;
   scheduleType: ScheduleType; timezone: string; dailyTargetCount: number;
@@ -50,7 +65,8 @@ export async function getCsrf(): Promise<string> {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body && !headers.has('Content-Type') && !isFormData) headers.set('Content-Type', 'application/json');
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     if (!csrfToken) await getCsrf();
     headers.set('X-CSRF-Token', csrfToken!);
@@ -64,6 +80,47 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return readBody<T>(response);
 }
+
+function idempotencyKey(headers?: HeadersInit) {
+  const result = new Headers(headers);
+  result.set('Idempotency-Key', crypto.randomUUID());
+  return result;
+}
+
+export const itemApi = {
+  list: (taskId: string, params: { status?: ItemStatus; page?: number; pageSize?: number } = {}) => {
+    const query = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 20) });
+    if (params.status) query.set('status', params.status);
+    return request<ItemPage>(`/tasks/${encodeURIComponent(taskId)}/items?${query}`);
+  },
+  create: (taskId: string, body: { title: string; content?: string; analysis?: string; externalUrl?: string }) => request<ItemView>(`/tasks/${encodeURIComponent(taskId)}/items`, { method: 'POST', body: JSON.stringify(body) }),
+  pastePreview: (taskId: string, text: string) => request<PastePreviewResponse>(`/tasks/${encodeURIComponent(taskId)}/items/paste-preview`, { method: 'POST', body: JSON.stringify({ text }) }),
+  pasteConfirm: (taskId: string, candidates: PasteCandidate[]) => request<ItemView[]>(`/tasks/${encodeURIComponent(taskId)}/items/paste-confirm`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({ candidates }) }),
+  today: (taskId: string) => request<TodayItemsResponse>(`/tasks/${encodeURIComponent(taskId)}/today-items`),
+  update: (itemId: string, body: { title?: string; content?: string; analysis?: string; externalUrl?: string }) => request<ItemView>(`/items/${encodeURIComponent(itemId)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+export const submissionApi = {
+  get: (itemId: string) => request<{ itemId: string; solutionContent: string; status: string; version: number }>(`/items/${encodeURIComponent(itemId)}/submission`),
+  save: (itemId: string, solutionContent: string, version?: number) => request<unknown>(`/items/${encodeURIComponent(itemId)}/submission`, { method: 'PUT', headers: version === undefined ? undefined : { 'If-Match-Version': String(version) }, body: JSON.stringify({ solutionContent, ...(version === undefined ? {} : { version }) }) }),
+  complete: (itemId: string, version: number, completionContext: 'today' | 'early' = 'today') => request<unknown>(`/items/${encodeURIComponent(itemId)}/complete`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({ version, completionContext }) }),
+  reopen: (itemId: string) => request<unknown>(`/items/${encodeURIComponent(itemId)}/reopen`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({}) }),
+};
+
+export const fileApi = {
+  upload: (taskId: string, file: File, purpose: 'source_material' | 'question_image' | 'solution_image', itemId?: string) => {
+    const body = new FormData(); body.append('file', file);
+    const query = new URLSearchParams({ purpose }); if (itemId) query.set('itemId', itemId);
+    return request<unknown>(`/tasks/${encodeURIComponent(taskId)}/files?${query}`, { method: 'POST', headers: idempotencyKey(), body });
+  },
+};
+
+export const importApi = {
+  xlsxPreview: (taskId: string, file: File) => { const body = new FormData(); body.append('file', file); return request<XlsxPreviewResponse>(`/tasks/${encodeURIComponent(taskId)}/imports/xlsx/preview`, { method: 'POST', body }); },
+  xlsxConfirm: (taskId: string, candidates: XlsxCandidate[]) => request<{ createdCount: number; skippedCount: number }>(`/tasks/${encodeURIComponent(taskId)}/imports/xlsx/confirm`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({ candidates }) }),
+};
+
+export const dashboardApi = { today: () => request<DashboardTodayResponse>('/dashboard/today') };
 
 export const taskApi = {
   list: (params: { status?: TaskStatus; page?: number; pageSize?: number } = {}) => {
