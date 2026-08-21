@@ -53,7 +53,7 @@ MySQL 8（远程实例）
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
 - `learning_items`：V5 持久化任务条目 `title/content/analysis/external_url`、任务内唯一且从 1 开始的 `sort_order`、`pending/completed` 状态、`solution_text`、`completed_at` 与审计字段；通过 `task_id` 外键 `ON DELETE CASCADE` 随任务物理删除，并有任务+状态+顺序及任务标题索引。
 - `checkins`：按任务+日期唯一，completed/partial/missed/makeup。
-- `idempotency_keys`：完成、撤销、补打、xlsx 确认防重复。
+- `idempotency_keys`：V6 持久化导入确认与其他确认写操作的用户/任务范围请求哈希、首次响应和 30 天过期时间；同键同请求重放，同键不同请求返回冲突。
 - `audit_logs`：最小操作审计，不记录题解全文或认证秘密。
 
 ## 5. 关键不变量

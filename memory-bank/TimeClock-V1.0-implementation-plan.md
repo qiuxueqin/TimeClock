@@ -335,7 +335,7 @@
 
 > 当前实现已覆盖条目模型、手工/粘贴管理、同步 xlsx 预览确认、标题去重、draft→active 条件和无快照 pending 顺序切片。由于 S3 尚无 checkins 或分配事实表，完整跨日“上一计划日未完成项优先”闭环留待 S4/S6 接入日期事实；不得将当前顺序切片误报为完整跨日顺延。
 >
-> 已完成证据：OpenAPI 校验通过（32 paths、61 schemas）；后端 `mvn -q -DskipTests compile` 通过；前端 `npm run typecheck`、`npm test -- --run`（3 个文件/4 个测试）和 `npm run build` 通过；`git diff --check` 通过。远程 MySQL S3 集成回归和完整 E2E 尚未通过门禁。
+> 已完成证据：OpenAPI 校验通过（32 paths、61 schemas）；后端 `mvn -q -DskipTests compile` 通过；远程 `time_clock_test` 的 Flyway V1-V6 与迁移专项测试通过；S3 后端专项测试已加入；前端 `npm run typecheck`、`npm test -- --run`（5 个文件/9 个测试）和 `npm run build` 通过；`git diff --check` 通过。完整 S3 Playwright 闭环尚未通过门禁。
 
 ### S3-API-01 冻结条目与分配契约（已完成）
 - **目标**：定义条目 CRUD、xlsx 导入、今日计划和全部条目查询。

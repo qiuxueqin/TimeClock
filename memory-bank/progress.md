@@ -7,7 +7,7 @@
 | S0 规格、工程骨架与质量门禁 | ✅ 已完成 | 原 GATE-S0 已通过；精简规格文档已重构 |
 | S1 认证、会话与用户隔离 | ✅ 已完成 | S1 认证主链路、前端登录注册、CSRF、Session 生命周期与验收测试已交付；S1 以 c04da74 提交并进入 S2 |
 | S2 清单任务与 daily 计划 | 🟡 实现完成，GATE-S2 待补齐 | S2 后端/数据库/计划计算/前端已实现；成功启用 E2E 依赖 S3 条目，前端任务专属组件/MSW 测试仍需补齐 |
-| S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、条目 CRUD/粘贴、同步 POI xlsx 预览确认、标题去重、activate 成功路径、today pending 顺序切片和前端入口已实现；幂等持久化与完整跨日事实等待后续 checkin 阶段 |
+| S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、V6 幂等表、条目 CRUD/粘贴、同步 POI xlsx 预览确认、持久化确认幂等、标题去重、activate 成功路径、today pending 顺序切片、后端 S3 专项 API 测试、前端 RTL/MSW 测试和前端入口已实现；完整跨日事实与 Playwright 闭环仍待后续 checkin 阶段/环境验收 |
 | S4 文字题解、完成/撤销、自动打卡 | ⏸ 未开始 | 依赖 S3 |
 | S5 今日页 | ⏸ 未开始 | 依赖 S4 |
 | S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
