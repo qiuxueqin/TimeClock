@@ -176,6 +176,33 @@ def main() -> int:
                              "ImportCandidatePage", "ConfirmImportRequest", "ConfirmImportResponse"):
         if forbidden_schema in schemas:
             errors.append(f"S3 不得保留异步导入 schema: {forbidden_schema}")
+
+    # 8. S5 今日总览契约断言（TEST-S5-API-01-01）
+    dash = paths.get("/dashboard/today", {})
+    if not dash.get("get"):
+        errors.append("S5 /dashboard/today 缺失 GET")
+    else:
+        sec = {k for s in dash["get"].get("security", []) for k in s}
+        if "sessionCookie" not in sec:
+            errors.append("S5 /dashboard/today 必须声明 sessionCookie")
+        if "csrf" in sec:
+            errors.append("S5 /dashboard/today 为只读接口不得要求 CSRF")
+    dash_status = schemas.get("DashboardStatus", {}).get("enum")
+    if dash_status != ["notStarted", "inProgress", "completed", "noPlan"]:
+        errors.append(f"S5 DashboardStatus 必须为 notStarted/inProgress/completed/noPlan，实际为 {dash_status}")
+    today_task = schemas.get("TodayTask", {})
+    tt_props = today_task.get("properties", {})
+    for field in ("task", "status", "completedCount", "plannedCount", "currentStreak"):
+        if field not in today_task.get("required", []) or field not in tt_props:
+            errors.append(f"S5 TodayTask 缺少必填字段: {field}")
+    for forbidden in ("actualValue", "reminderText"):
+        if forbidden in tt_props:
+            errors.append(f"S5 TodayTask 不得保留精简范围外字段: {forbidden}")
+    dash_resp = schemas.get("DashboardTodayResponse", {})
+    for field in ("date", "todayCount", "completedCount", "pendingCount",
+                  "completionRate", "tasks", "currentStreak", "longestStreak"):
+        if field not in dash_resp.get("required", []):
+            errors.append(f"S5 DashboardTodayResponse 缺少必填字段: {field}")
     if errors:
         for e in errors:
             print(f"[ERROR] {e}")

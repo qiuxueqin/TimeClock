@@ -770,7 +770,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
-  # ============ 打卡（S5/S6） ============
+  # ============ 打卡（S6） ============
   /tasks/{taskId}/checkins/{date}:
     get:
       tags: [checkins]
@@ -857,7 +857,7 @@ paths:
       tags: [dashboard]
       summary: 今日总览
       operationId: dashboardToday
-      description: 按各任务时区计算今日计划；混合清单/习惯/暂停/结束；连续摘要；站内提示。状态优先级 DEC-15。
+      description: 按各任务自身时区计算今日计划并聚合为一次总览：今日任务数、已完成/待完成、整体进度与连续摘要。仅清单型 daily 任务（DEC-05）；草稿、非计划日或剩余条目为零的任务标记 noPlan。派生状态见 DashboardStatus。
       security:
         - sessionCookie: []
       responses:
@@ -1617,15 +1617,15 @@ components:
           format: uuid
           description: 补打提交后不可编辑/撤销（DEC-24）。
 
-    # ============ 今日总览 ============
+    # ============ 今日总览（S5） ============
     DashboardStatus:
       type: string
-      enum: [notStarted, inProgress, completed, overdue, due, paused, noPlan]
-      description: 派生状态，优先级 completed > overdue > due > inProgress > notStarted。DEC-15。
+      enum: [notStarted, inProgress, completed, noPlan]
+      description: 今日派生状态，按任务时区判定；优先级 completed > inProgress > notStarted。noPlan 覆盖草稿、非计划日与剩余条目为零。
     TodayTask:
       type: object
       additionalProperties: false
-      required: [task, status, completedCount, plannedCount, reminderText]
+      required: [task, status, completedCount, plannedCount, currentStreak]
       properties:
         task:
           $ref: '#/components/schemas/TaskView'
@@ -1633,16 +1633,13 @@ components:
           $ref: '#/components/schemas/DashboardStatus'
         completedCount:
           type: integer
+          description: 今日已完成条目数。
         plannedCount:
           type: integer
-          description: 清单=今日目标；习惯=目标值（可为 0/无）。
-        actualValue:
-          type: number
-          nullable: true
-        reminderText:
-          type: string
-          nullable: true
-          description: 站内提示文本，如"算法 200 题：今日还差 3 题"。
+          description: 今日目标（含顺延项，按剩余量缩减）；noPlan 时为 0。
+        currentStreak:
+          type: integer
+          description: 该任务当前连续天数摘要；仅 completed 计入，makeup 不计且不修复。
     DashboardTodayResponse:
       type: object
       additionalProperties: false
@@ -1659,26 +1656,29 @@ components:
         date:
           type: string
           format: date
-          description: 用户时区今日。
+          description: 用户时区今日（YYYY-MM-DD，仅作展示；各任务计划日以任务自身时区为准）。
         todayCount:
           type: integer
-          description: 今日任务数。
+          description: 今日有计划的任务数（不含 noPlan）。
         completedCount:
           type: integer
+          description: 今日已达标的任务数。
         pendingCount:
           type: integer
+          description: 今日尚未达标的任务数（todayCount - completedCount）。
         completionRate:
           type: number
-          description: 0~1，整体完成率。
+          description: 0~1 整体完成率；todayCount 为 0 时为 0。
         tasks:
           type: array
           items:
             $ref: '#/components/schemas/TodayTask'
         currentStreak:
           type: integer
-          description: 当前连续天数。
+          description: 全部任务中的最大当前连续天数。
         longestStreak:
           type: integer
+          description: 全部任务中的最长连续天数。
 
     # ============ 日历 / 统计 ============
     CalendarDay:
