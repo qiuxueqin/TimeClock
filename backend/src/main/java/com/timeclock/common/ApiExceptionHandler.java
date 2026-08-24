@@ -52,6 +52,16 @@ public class ApiExceptionHandler {
                 .body(EnvelopeError.of("VALIDATION_ERROR", "请求参数格式不正确", requestId));
     }
 
+    /** 缺少必需请求头（如 Idempotency-Key）。 */
+    @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
+    public ResponseEntity<EnvelopeError> handleMissingHeader(
+            org.springframework.web.bind.MissingRequestHeaderException ex) {
+        String requestId = RequestContext.requestId();
+        log.info("缺少请求头 req={} name={}", requestId, ex.getHeaderName());
+        return ResponseEntity.badRequest()
+                .body(EnvelopeError.of("VALIDATION_ERROR", "缺少必要请求头: " + ex.getHeaderName(), requestId));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<EnvelopeError> handleUnexpected(Exception ex) {
         String requestId = RequestContext.requestId();

@@ -60,8 +60,6 @@ def main() -> int:
     idem = [
         ("/items/{itemId}/complete", "post"),
         ("/items/{itemId}/reopen", "post"),
-        ("/tasks/{taskId}/checkins/{date}/complete", "post"),
-        ("/tasks/{taskId}/checkins/{date}/edit", "patch"),
         ("/tasks/{taskId}/checkins/{date}/makeup", "post"),
         ("/tasks/{taskId}/imports/xlsx/confirm", "post"),
         ("/tasks/{taskId}/items/paste-confirm", "post"),

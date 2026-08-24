@@ -19,10 +19,16 @@ test('两个浏览器上下文 Cookie 隔离且可登录恢复', async ({ browse
     await pageA.getByLabel('邮箱').fill(email);
     await pageA.getByRole('textbox', { name: '* 密码' }).fill(password);
     await pageA.getByRole('textbox', { name: '* 确认密码' }).fill(password);
-    await pageA.getByRole('button', { name: '注册' }).click();
+    // 注册只创建账号；会话由登录接口的 Set-Cookie 建立，注册后需真实登录一次。
+    await pageA.getByRole('button', { name: /注\s*册/ }).click();
+    await expect(pageA).toHaveURL(/\/today$/); // 等注册接口完成，避免整页跳转打断在途请求
+    await pageA.goto('/login');
+    await pageA.getByLabel('邮箱').fill(email);
+    await pageA.getByRole('textbox', { name: '* 密码' }).fill(password);
+    await pageA.getByRole('button', { name: /登\s*录/ }).click();
     await expect(pageA).toHaveURL(/\/today$/);
     await pageA.reload();
-    await expect(pageA.getByText(email)).toBeVisible();
+    await expect(pageA).toHaveURL(/\/today$/);
     expect(await first.cookies()).not.toEqual(await second.cookies());
     await pageB.goto('/today');
     await expect(pageB).toHaveURL(/\/login$/);

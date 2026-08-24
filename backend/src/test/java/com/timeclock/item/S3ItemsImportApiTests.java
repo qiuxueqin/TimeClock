@@ -83,8 +83,9 @@ class S3ItemsImportApiTests {
                 .getResponse().getContentAsString();
         assertThat(preview).contains("First");
         mockMvc.perform(post("/api/v1/tasks/{task}/items/paste-confirm", task).with(csrf()).cookie(cookie(session))
+                        .header("Idempotency-Key", "paste-key")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"candidates\":[{\"title\":\"First\"},{\"title\":\" first \"},{\"title\":\"Second\"}]}") )
+                        .content("{\"candidates\":[{\"title\":\"First\"},{\"title\":\" first \"},{\"title\":\"Second\"}]}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.length()", org.hamcrest.Matchers.is(2)));
         mockMvc.perform(get("/api/v1/tasks/{task}/items", task).cookie(cookie(session)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
@@ -124,7 +125,7 @@ class S3ItemsImportApiTests {
         mockMvc.perform(get("/api/v1/tasks/{task}/today-items", task).cookie(cookie(session)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.targetCount").value(2))
                 .andExpect(jsonPath("$.data.items.length()", org.hamcrest.Matchers.is(2)))
-                .andExpect(jsonPath("$.data.items[0].title").value("one"));
+                .andExpect(jsonPath("$.data.items[0].item.title").value("one"));
     }
 
     private String registerAndLogin(String prefix) throws Exception {

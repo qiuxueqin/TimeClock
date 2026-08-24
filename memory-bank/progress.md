@@ -8,7 +8,7 @@
 | S1 认证、会话与用户隔离 | ✅ 已完成 | S1 认证主链路、前端登录注册、CSRF、Session 生命周期与验收测试已交付；S1 以 c04da74 提交并进入 S2 |
 | S2 清单任务与 daily 计划 | 🟡 实现完成，GATE-S2 待补齐 | S2 后端/数据库/计划计算/前端已实现；成功启用 E2E 依赖 S3 条目，前端任务专属组件/MSW 测试仍需补齐 |
 | S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、V6 幂等表、条目 CRUD/粘贴、同步 POI xlsx 预览确认、持久化确认幂等、标题去重、activate 成功路径、today pending 顺序切片、后端 S3 专项 API 测试、前端 RTL/MSW 测试和前端入口已实现；完整跨日事实与 Playwright 闭环仍待后续 checkin 阶段/环境验收 |
-| S4 文字题解、完成/撤销、自动打卡 | ⏸ 未开始 | 依赖 S3 |
+| S4 文字题解、完成/撤销、自动打卡 | ✅ 已完成 | V7 checkins、题解保存/完成/撤销契约与事务（注入 Clock、任务/条目行锁、幂等键先锁后写）、并发幂等专项测试、前端完成闭环（启用/条目入口/今日进度）及 Playwright 全链路 E2E（桌面+移动 8/8）已交付；远程 MySQL 全量回归 65/65 通过 |
 | S5 今日页 | ⏸ 未开始 | 依赖 S4 |
 | S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
 | S7 部署、安全与全链路验收 | ⏸ 未开始 | 依赖 S6 |
@@ -57,6 +57,24 @@
 - S1-QA-01 多端会话与隔离 E2E：已完成基础 Playwright 双上下文用例；真实资源越权 E2E 待 S2 资源出现后按模板扩展。
 
 - S3 已实现主要纵向切片：OpenAPI 已收缩为 pending/completed 和同步 xlsx preview/confirm；V5 `learning_items` 使用任务级序号唯一与 `ON DELETE CASCADE`；后端支持条目 CRUD、粘贴预览/确认、POI xlsx 预览/确认、规范化标题默认跳过和 draft→active 条目检查；today endpoint 在无 checkin 事实时按任务时区返回 pending 顺序切片；前端加入条目、xlsx 导入和今日入口。
+
+### S4 阶段
+
+- S4-API-01 题解与完成契约：已完成。OpenAPI 按精简规格清理了 submission 版本/历史、图片、`early` 提前完成与习惯型打卡写路径（25 paths / 55 schemas）；冻结 `GET|PUT /items/{id}/submission`、`POST /items/{id}/complete`、`POST /items/{id}/reopen`；错误码 SOLUTION_REQUIRED(422)、ITEM_NOT_TODAY(422)、ITEM_ALREADY_COMPLETED/ITEM_NOT_COMPLETED(409)、IDEMPOTENCY_CONFLICT(409)、缺失 Idempotency-Key(400)；paste-confirm 幂等键改为必填。
+- S4-DB-01 打卡事实：已完成。新增不可变迁移 `V7__checkins.sql`：`(task_id,checkin_date)` 唯一、状态/数量 CHECK、任务删除级联；复用 V6 `idempotency_keys` 存请求哈希与首次响应快照。
+- S4-BE-01 完成事务：已完成。`ItemService.complete/reopen` 注入 Clock、固定锁序（先 tasks 行 X 锁再写幂等键，消除外键 S→X 升级死锁 1213）、锁定任务/条目后校验归属+启用+计划窗口+今日分配，条目/进度/checkin 同事务更新；达标自动 upsert `completed`，未达标为 `partial`；撤销保留题解、completed_at 置空并回退当日打卡。
+- S4-BE-02 完成幂等：已完成。同键同请求回放首次响应；同键不同请求体 409；十线程并发专项测试（`S4IdempotencyConcurrencyTests` 7 用例）覆盖同键并发、异键同条目恰好一次、跨用户 404、缺失键 400、非今日 422 与撤销回放。
+- S4-BE-03 撤销完成：已完成。5/5→4/5 partial、题解保留、重复撤销不二次扣减；跨日打卡事实归属留待 S6 日结/补打补齐。
+- S4-FE-01 前端闭环：已完成。client 移除 version/early/fileApi 并新增 taskApi.activate；TaskListPage 增加"启用"按钮与"条目"入口；ItemPage 提供题解编辑、参考解析展示（仅 analysis 非空）、完成/撤销按钮（pending 或空白题解禁用）、today 路由渲染"今日进度：X/Y"；全程无任何 /checkins 写请求。
+- S4-QA-01 全链路 E2E：已完成。`e2e/s4-completion.spec.ts` 覆盖注册登录→建任务（每日目标 5）→录入 5 题→启用→空题解客户端拦截→逐项完成进度 1..5/5→断言零 /checkins 写请求→刷新持久 5/5→撤销回 4/5 且题解保留；desktop+mobile 双视口通过；顺带修复过期 smoke/auth E2E 使全套件 8/8 通过。
+
+### S4 验收证据
+
+- 后端远程 MySQL 8 全量回归：`TC_MYSQL_DATABASE=time_clock_test mvn test`，65 tests passed, 0 failures（含 S3/S4 API、并发幂等、迁移与认证回归）。
+- Playwright 真实前后端 + 测试库链路：8 passed（s4-completion desktop/mobile、auth desktop/mobile、smoke desktop/mobile）。
+- 前端：`npm run typecheck`、`npm test -- --run`（6 文件 17 测试）、`npm run build` 通过。
+- OpenAPI：`python contracts/openapi/validate.py` 通过，25 paths、55 schemas。
+- 格式检查：`git diff --check` 通过。
 
 1. **补齐 S2 验收缺口并决定是否通过 GATE-S2**：新增任务 feature 的 RTL/MSW 测试（空列表、分页、非法目标、删除取消/确认、失败保留输入、404/403 错误），修复并验证 DELETE 204 的前端路径；补充移动端 Playwright 任务页面无横向溢出。
 2. **开始 S3-API-01**：冻结学习条目、手工/粘贴/xlsx 预览确认、顺序分配和顺延契约；明确正式条目的确认语义，解除 S2 activate 成功路径依赖。

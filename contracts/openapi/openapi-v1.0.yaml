@@ -30,7 +30,6 @@ tags:
   - name: submissions
   - name: checkins
   - name: dashboard
-  - name: files
   - name: imports
   - name: export
 
@@ -675,18 +674,12 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: If-Match-Version
-          in: header
-          required: false
-          schema:
-            type: integer
-          description: 草稿首次保存可省略；已有版本必填。
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubmissionSaveRequest'
+              $ref: '#/components/schemas/SolutionRequest'
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -694,38 +687,6 @@ paths:
           $ref: '#/components/responses/Conflict'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /items/{itemId}/submission/history:
-    get:
-      tags: [submissions]
-      summary: 题解历史版本
-      operationId: getSubmissionHistory
-      description: 历史版本不可覆盖（S4-DB-01）；按用户和条目授权查询。
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 题解历史。
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [data, requestId]
-                properties:
-                  data:
-                    $ref: '#/components/schemas/SubmissionHistory'
-                  requestId:
-                    type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
   # ============ 完成 / 撤销（S4） ============
   /items/{itemId}/complete:
     post:
@@ -754,7 +715,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CompleteRequest'
+              $ref: '#/components/schemas/SolutionRequest'
       responses:
         '200':
           description: 完成结果与进度。
@@ -766,7 +727,7 @@ paths:
                 required: [data, requestId]
                 properties:
                   data:
-                    $ref: '#/components/schemas/CompleteResponse'
+                    $ref: '#/components/schemas/CompletionResponse'
                   requestId:
                     type: string
         '422':
@@ -780,7 +741,7 @@ paths:
       tags: [submissions]
       summary: 撤销完成
       operationId: reopenItem
-      description: 幂等键；降低对应打卡完成数，不达标时 completed→partial 并局部重算连续（DEC-23）；保留题解与历史版本。
+      description: 幂等键；降低对应打卡完成数，不达标时 completed→partial；保留题解。
       security:
         - sessionCookie: []
         - csrf: []
@@ -802,7 +763,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ReopenRequest'
+              $ref: '#/components/schemas/SolutionRequest'
       responses:
         '200':
           $ref: '#/components/responses/Success'
@@ -846,90 +807,6 @@ paths:
                     $ref: '#/components/schemas/CheckinView'
                   requestId:
                     type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/checkins/{date}/complete:
-    post:
-      tags: [checkins]
-      summary: 习惯型打卡
-      operationId: completeHabitCheckin
-      description: 无目标提交即完成；有目标实际量达标→completed，低于→partial；备注必填服务端强制（S5-BE-01）。仅习惯任务。幂等键。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: date
-          in: path
-          required: true
-          schema:
-            type: string
-            format: date
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HabitCheckinRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '422':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /tasks/{taskId}/checkins/{date}/edit:
-    patch:
-      tags: [checkins]
-      summary: 编辑当日习惯打卡
-      operationId: editHabitCheckin
-      description: 仅今天可普通编辑（S5-BE-02）；历史日期走补打。版本号+幂等键。补打记录不可编辑（DEC-24）。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: date
-          in: path
-          required: true
-          schema:
-            type: string
-            format: date
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HabitCheckinEditRequest'
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /tasks/{taskId}/checkins/{date}/makeup:
@@ -1075,160 +952,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   # ============ 文件（S4/S7） ============
-  /tasks/{taskId}/files:
-    post:
-      tags: [files]
-      summary: 上传文件
-      operationId: uploadFile
-      description: multipart/form-data。题解图片与源资料（PDF/DOCX/CSV/图片）。校验扩展名/MIME/魔数/大小（50MB，题解图 10MB，最多 9 张）。服务端重算 SHA-256；同任务同哈希返回既有批次。私有文件。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: false
-          schema:
-            type: string
-            format: uuid
-          description: 上传源资料创建批次时建议幂等。
-        - name: purpose
-          in: query
-          required: true
-          schema:
-            $ref: '#/components/schemas/FilePurpose'
-        - name: itemId
-          in: query
-          schema:
-            type: string
-            format: uuid
-          description: purpose=solution_image 时可选，用于绑定。
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file:
-                  type: string
-                  format: binary
-      responses:
-        '201':
-          description: 上传结果。
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [data, requestId]
-                properties:
-                  data:
-                    $ref: '#/components/schemas/FileUploadResponse'
-                  requestId:
-                    type: string
-        '413':
-          description: 文件过大。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvelopeError'
-        '415':
-          description: 类型/MIME/魔数不符。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvelopeError'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /files/{fileId}/download:
-    get:
-      tags: [files]
-      summary: 私有文件下载
-      operationId: downloadFile
-      description: 校验当前用户与资源归属；流式返回；不暴露磁盘路径。题解图片、源资料均经此鉴权访问。
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: fileId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: 不存在或无权访问。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EnvelopeError'
-  /items/{itemId}/submission/images/{fileId}/bind:
-    post:
-      tags: [submissions]
-      summary: 绑定题解图片
-      operationId: bindSubmissionImage
-      description: 上传成功后才能绑定；最多 9 张；解绑不影响其他题解。不改变完成状态。
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: fileId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-  /items/{itemId}/submission/images/{fileId}/unbind:
-    delete:
-      tags: [submissions]
-      summary: 解绑题解图片
-      operationId: unbindSubmissionImage
-      security:
-        - sessionCookie: []
-        - csrf: []
-      parameters:
-        - name: itemId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: fileId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          $ref: '#/components/responses/Success'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
 
-  # ============ xlsx 导入（S3） ============
   /tasks/{taskId}/imports/xlsx/preview:
     post:
       tags: [imports]
@@ -1776,139 +1500,29 @@ components:
     SubmissionView:
       type: object
       additionalProperties: false
-      required: [itemId, solutionContent, status, version]
+      required: [itemId, solutionContent, status]
       properties:
-        itemId:
-          type: string
-          format: uuid
-        solutionContent:
-          type: string
-          description: 用户题解文字，可为空（草稿）。
-        attachmentImages:
-          type: array
-          items:
-            $ref: '#/components/schemas/AttachmentImage'
-          description: 已绑定图片（有效图片满足完成条件）。
-        status:
-          $ref: '#/components/schemas/SubmissionStatus'
-        submittedAt:
-          type: string
-          format: date-time
-          nullable: true
-        version:
-          type: integer
-          description: 题解版本，保存/提交必须携带。
-    AttachmentImage:
+        itemId: {type: string, format: uuid}
+        solutionContent: {type: string}
+        status: {$ref: '#/components/schemas/ItemStatus'}
+    SolutionRequest:
       type: object
       additionalProperties: false
-      required: [fileId, url]
-      properties:
-        fileId:
-          type: string
-          format: uuid
-        url:
-          type: string
-          format: uri
-          description: 私有鉴权下载地址。
-        sortOrder:
-          type: integer
-    SubmissionSaveRequest:
-      type: object
-      additionalProperties: false
-      required: [solutionContent, version]
+      required: [solutionContent]
       properties:
         solutionContent:
           type: string
-          description: 可为空（保存草稿）。
-        version:
-          type: integer
-          description: 若为草稿首次保存可省略。
-    SubmissionSaveResponse:
+          description: 用户纯文字题解；保存草稿可为空，完成时去空白后必须非空。
+    CompletionResponse:
       type: object
       additionalProperties: false
-      required: [submission]
+      required: [item, plannedCount, completedCount, taskCompletedCount, checkinStatus]
       properties:
-        submission:
-          $ref: '#/components/schemas/SubmissionView'
-    SubmissionHistory:
-      type: object
-      additionalProperties: false
-      required: [itemId, versions]
-      properties:
-        itemId:
-          type: string
-          format: uuid
-        versions:
-          type: array
-          items:
-            $ref: '#/components/schemas/SubmissionVersion'
-    SubmissionVersion:
-      type: object
-      additionalProperties: false
-      required: [version, solutionContent, savedAt]
-      properties:
-        version:
-          type: integer
-        solutionContent:
-          type: string
-        savedAt:
-          type: string
-          format: date-time
-
-    # ============ 完成 / 撤销 ============
-    CompleteRequest:
-      type: object
-      additionalProperties: false
-      required: [version, idempotencyKey]
-      properties:
-        version:
-          type: integer
-          description: 题解版本。
-        idempotencyKey:
-          type: string
-          format: uuid
-          description: 防重复完成。DEC/§3.2。
-        completionContext:
-          type: string
-          enum: [today, early]
-          description: today=计入今日；early=提前完成，只计总进度。DEC-11。
-    CompleteResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - itemId
-        - itemStatus
-        - todayCompletedCount
-        - todayPlannedCount
-        - taskTotalCompletedCount
-        - checkinStatus
-      properties:
-        itemId:
-          type: string
-          format: uuid
-        itemStatus:
-          $ref: '#/components/schemas/ItemStatus'
-        todayCompletedCount:
-          type: integer
-          description: 今日已完成数（today 上下文）。
-        todayPlannedCount:
-          type: integer
-        taskTotalCompletedCount:
-          type: integer
-          description: 任务总进度。
-        checkinStatus:
-          $ref: '#/components/schemas/CheckinStatus'
-          description: 达标后自动为 completed（DEC-09）。
-    ReopenRequest:
-      type: object
-      additionalProperties: false
-      required: [idempotencyKey]
-      properties:
-        idempotencyKey:
-          type: string
-          format: uuid
-
-    # ============ 打卡 ============
+        item: {$ref: '#/components/schemas/ItemView'}
+        plannedCount: {type: integer}
+        completedCount: {type: integer}
+        taskCompletedCount: {type: integer}
+        checkinStatus: {$ref: '#/components/schemas/CheckinStatus'}
     CheckinStatus:
       type: string
       enum: [completed, partial, missed, makeup]

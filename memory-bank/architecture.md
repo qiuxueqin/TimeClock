@@ -8,6 +8,7 @@
 - S1：认证、数据库 Session、CSRF、登录注册前端和基础多端验收已完成；提交 `c04da74`。S2 资源接口必须复用当前用户上下文和归属约束；真实资源越权测试随资源模块落地。
 - S2：任务契约、V4 任务模型、任务创建/读取/列表/编辑/删除、daily 计划计算和基础任务管理前端已实现；后端 46 项独立 MySQL 回归、OpenAPI 校验和前端 typecheck/test/build 已通过。S2 Gate 仍等待 S3 条目模型提供成功 activate 主链路，以及任务专属 MSW/RTL 和移动端 E2E 验收。
 - S3：学习条目 V5、手工/粘贴条目、同步 POI xlsx 预览确认、标题去重、草稿启用条目检查、按任务时区返回 pending 顺序切片已实现；完整跨日顺延等待 S4/S6 的日期事实，前端条目/导入路由已加入。
+- S4：文字题解与完成闭环已完成。`ItemService.complete/reopen` 在同一事务内更新条目、当日进度和 checkins，注入 Clock、固定锁序（先 tasks 行锁再写幂等键）并通过 `S4IdempotencyConcurrencyTests` 并发验收；V7 建立 `(task_id,checkin_date)` 唯一打卡事实；OpenAPI 清理为纯文字题解契约；前端提供启用/条目入口、题解编辑器、今日进度展示且全程无 /checkins 写请求；Playwright 全链路（桌面+移动）8/8 通过，远程 MySQL 全量回归 65/65 通过。跨日撤销的打卡归属留待 S6 日结/补打补齐。
 
 ## 2. 文档地图
 
@@ -48,12 +49,21 @@ MySQL 8（远程实例）
 - 前端 `src/api/client.ts` 使用 `credentials: include`，CSRF Token 只保存在内存，403 可刷新 Token 后重试一次；认证页面位于 `src/features/auth/Auth.tsx`。
 - S1 验收测试：`AuthSessionApiTests`、`AuthSecurityBoundaryTests`、`frontend/src/api/client.test.ts` 和 `frontend/e2e/auth.spec.ts`。
 
+## 4.2 S4 完成闭环实现摘要
+
+- `POST /items/{id}/complete|reopen` 要求 `Idempotency-Key` 请求头；缺失由 `ApiExceptionHandler.MissingRequestHeaderException` 处理器返回 400。幂等键先锁 tasks 行再写入（锁序固定），同键同请求回放首次响应快照，同键不同请求体 409。
+- 完成校验链：归属(user)→题解 trim 非空→任务 active→今日为计划日→条目在按序分配切片内；任一失败稳定返回 SOLUTION_REQUIRED / TASK_NOT_ACTIVE / ITEM_NOT_TODAY / ITEM_ALREADY_COMPLETED。
+- 达标自动 upsert 当日 checkins=completed（ON DUPLICATE KEY），未达标有完成为 partial；`today-items` 的 plannedCount=min(每日目标, 剩余pending+今日已完成)，保证当日分母稳定。
+- 撤销保留 solution_text 并将 completed_at 置空；仅当今日仍为计划日时回退当日打卡（跨日事实归属由 S6 补齐）。
+- 前端 `TaskListPage` 提供 draft"启用"与"条目"入口；`ItemPage` 在 /today 路由渲染 `data-testid="today-progress"` 进度并按 complete 响应提示打卡达成；全前端无任何 /checkins 写请求。
+- E2E：`frontend/e2e/s4-completion.spec.ts` 全 UI 链路（注册→登录→建任务→录 5 题→启用→完成→零 checkins 写断言→刷新持久→撤销 4/5）；注册接口不建立会话，脚本在注册后显式登录。
+
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
 - `learning_items`：V5 持久化任务条目 `title/content/analysis/external_url`、任务内唯一且从 1 开始的 `sort_order`、`pending/completed` 状态、`solution_text`、`completed_at` 与审计字段；通过 `task_id` 外键 `ON DELETE CASCADE` 随任务物理删除，并有任务+状态+顺序及任务标题索引。
-- `checkins`：按任务+日期唯一，completed/partial/missed/makeup。
-- `idempotency_keys`：V6 持久化导入确认与其他确认写操作的用户/任务范围请求哈希、首次响应和 30 天过期时间；同键同请求重放，同键不同请求返回冲突。
+- `checkins`：按任务+日期唯一，completed/partial/missed/makeup；V7 已建立，清单完成达标时由完成事务自动 upsert。
+- `idempotency_keys`：V6 持久化导入确认与其他确认写操作的用户/任务范围请求哈希、首次响应和 30 天过期时间；S4 完成/撤销复用同一服务，同键同请求重放，同键不同请求返回冲突。
 - `audit_logs`：最小操作审计，不记录题解全文或认证秘密。
 
 ## 5. 关键不变量

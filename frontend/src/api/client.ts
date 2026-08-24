@@ -100,19 +100,14 @@ export const itemApi = {
   update: (itemId: string, body: { title?: string; content?: string; analysis?: string; externalUrl?: string }) => request<ItemView>(`/items/${encodeURIComponent(itemId)}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
-export const submissionApi = {
-  get: (itemId: string) => request<{ itemId: string; solutionContent: string; status: string; version: number }>(`/items/${encodeURIComponent(itemId)}/submission`),
-  save: (itemId: string, solutionContent: string, version?: number) => request<unknown>(`/items/${encodeURIComponent(itemId)}/submission`, { method: 'PUT', headers: version === undefined ? undefined : { 'If-Match-Version': String(version) }, body: JSON.stringify({ solutionContent, ...(version === undefined ? {} : { version }) }) }),
-  complete: (itemId: string, version: number, completionContext: 'today' | 'early' = 'today') => request<unknown>(`/items/${encodeURIComponent(itemId)}/complete`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({ version, completionContext }) }),
-  reopen: (itemId: string) => request<unknown>(`/items/${encodeURIComponent(itemId)}/reopen`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({}) }),
-};
+export type SubmissionView = { itemId: string; solutionContent: string; status: ItemStatus };
+export type CompletionResponse = { item: ItemView; plannedCount: number; completedCount: number; taskCompletedCount: number; checkinStatus: 'completed' | 'partial' };
 
-export const fileApi = {
-  upload: (taskId: string, file: File, purpose: 'source_material' | 'question_image' | 'solution_image', itemId?: string) => {
-    const body = new FormData(); body.append('file', file);
-    const query = new URLSearchParams({ purpose }); if (itemId) query.set('itemId', itemId);
-    return request<unknown>(`/tasks/${encodeURIComponent(taskId)}/files?${query}`, { method: 'POST', headers: idempotencyKey(), body });
-  },
+export const submissionApi = {
+  get: (itemId: string) => request<SubmissionView>(`/items/${encodeURIComponent(itemId)}/submission`),
+  save: (itemId: string, solutionContent: string) => request<SubmissionView>(`/items/${encodeURIComponent(itemId)}/submission`, { method: 'PUT', body: JSON.stringify({ solutionContent }) }),
+  complete: (itemId: string, solutionContent: string) => request<CompletionResponse>(`/items/${encodeURIComponent(itemId)}/complete`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({ solutionContent }) }),
+  reopen: (itemId: string) => request<CompletionResponse>(`/items/${encodeURIComponent(itemId)}/reopen`, { method: 'POST', headers: idempotencyKey(), body: JSON.stringify({}) }),
 };
 
 export const importApi = {
@@ -134,6 +129,7 @@ export const taskApi = {
   create: (body: TaskCreateRequest) => request<TaskView>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: string, body: TaskUpdateRequest) => request<TaskView>(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   remove: (id: string) => request<void>(`/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  activate: (id: string) => request<TaskView>('/tasks/' + encodeURIComponent(id) + '/activate', { method: 'POST' }),
 };
 
 export const authApi = {
