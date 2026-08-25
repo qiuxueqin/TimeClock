@@ -9,6 +9,7 @@
 - S2：任务契约、V4 任务模型、任务创建/读取/列表/编辑/删除、daily 计划计算和基础任务管理前端已实现；后端 46 项独立 MySQL 回归、OpenAPI 校验和前端 typecheck/test/build 已通过。S2 Gate 仍等待 S3 条目模型提供成功 activate 主链路，以及任务专属 MSW/RTL 和移动端 E2E 验收。
 - S3：学习条目 V5、手工/粘贴条目、同步 POI xlsx 预览确认、标题去重、草稿启用条目检查、按任务时区返回 pending 顺序切片已实现；完整跨日顺延等待 S4/S6 的日期事实，前端条目/导入路由已加入。
 - S4：文字题解与完成闭环已完成。`ItemService.complete/reopen` 在同一事务内更新条目、当日进度和 checkins，注入 Clock、固定锁序（先 tasks 行锁再写幂等键）并通过 `S4IdempotencyConcurrencyTests` 并发验收；V7 建立 `(task_id,checkin_date)` 唯一打卡事实；OpenAPI 清理为纯文字题解契约；前端提供启用/条目入口、题解编辑器、今日进度展示且全程无 /checkins 写请求；Playwright 全链路（桌面+移动）8/8 通过，远程 MySQL 全量回归 65/65 通过。跨日撤销的打卡归属留待 S6 日结/补打补齐。
+- S5：今日页已完成。`schedule` 包提供 `GET /api/v1/dashboard/today` 只读聚合：按各任务 IANA 时区判定计划日并复用 TaskScheduleCalculator；纯函数 StreakCalculator 输出逐任务与全局连续摘要（仅 completed 计入、无计划日跳过、partial/missed 中断、makeup 不计不修复、今天未完成不计数不断链）；DashboardStatus 四态 notStarted/inProgress/completed/noPlan。前端 TodayPage 渲染日期问候、五项汇总、整体进度与四态列表，骨架/空态/错误重试齐备；ItemPage 完成/撤销后精确失效 dashboard today 缓存；组件测试与双视口 E2E 通过。
 
 ## 2. 文档地图
 
@@ -57,6 +58,14 @@ MySQL 8（远程实例）
 - 撤销保留 solution_text 并将 completed_at 置空；仅当今日仍为计划日时回退当日打卡（跨日事实归属由 S6 补齐）。
 - 前端 `TaskListPage` 提供 draft"启用"与"条目"入口；`ItemPage` 在 /today 路由渲染 `data-testid="today-progress"` 进度并按 complete 响应提示打卡达成；全前端无任何 /checkins 写请求。
 - E2E：`frontend/e2e/s4-completion.spec.ts` 全 UI 链路（注册→登录→建任务→录 5 题→启用→完成→零 checkins 写断言→刷新持久→撤销 4/5）；注册接口不建立会话，脚本在注册后显式登录。
+
+## 4.3 S5 今日页实现摘要
+
+- `schedule` 包 `TodayOverviewController/Service` 提供 `GET /api/v1/dashboard/today` 只读聚合：用户时区定展示日期，逐任务按自身 IANA 时区取今日并复用 `TaskScheduleCalculator.planDay`；`plannedCount=min(每日目标, 剩余 pending+今日已完成)` 与 ItemService.today 同口径；草稿、非计划日、剩余为零统一 noPlan 且 plannedCount=0。
+- 纯函数 `StreakCalculator` 计算连续摘要：窗口 `[max(startDate, 首个打卡事实日), min(today, endDate)]`，仅 completed 计入，无计划日跳过不断链，partial/missed 中断，makeup 不计不修复，今天是计划日但未完成时不计数也不断链，剩余条目为零时收敛到末次事实日避免误报断链。全局 currentStreak/longestStreak 取全部任务最大值。
+- 前端 `TodayPage`：问候+日期、五项 Statistic 汇总、整体进度条、四态 Tag 列表（noPlan 不进列表）、骨架/空态引导创建/错误重试；状态以文字+颜色双通道表达。
+- 缓存一致性（GATE-S5）：`ItemPage` 完成/撤销成功后精确失效 `['dashboard','today']`；组件测试断言无关查询（如 tasks 列表）不被波及。
+- E2E：`frontend/e2e/s5-today.spec.ts` 覆盖空态→未开始→进行中→已完成与连续摘要刷新，全程零 /checkins 写请求；Playwright 配置 expect.timeout=15s 适配远程库延迟。
 
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。

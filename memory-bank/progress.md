@@ -9,7 +9,7 @@
 | S2 清单任务与 daily 计划 | 🟡 实现完成，GATE-S2 待补齐 | S2 后端/数据库/计划计算/前端已实现；成功启用 E2E 依赖 S3 条目，前端任务专属组件/MSW 测试仍需补齐 |
 | S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、V6 幂等表、条目 CRUD/粘贴、同步 POI xlsx 预览确认、持久化确认幂等、标题去重、activate 成功路径、today pending 顺序切片、后端 S3 专项 API 测试、前端 RTL/MSW 测试和前端入口已实现；完整跨日事实与 Playwright 闭环仍待后续 checkin 阶段/环境验收 |
 | S4 文字题解、完成/撤销、自动打卡 | ✅ 已完成 | V7 checkins、题解保存/完成/撤销契约与事务（注入 Clock、任务/条目行锁、幂等键先锁后写）、并发幂等专项测试、前端完成闭环（启用/条目入口/今日进度）及 Playwright 全链路 E2E（桌面+移动 8/8）已交付；远程 MySQL 全量回归 65/65 通过 |
-| S5 今日页 | ⏸ 未开始 | 依赖 S4 |
+| S5 今日页 | ✅ 已完成 | S5-API-01 契约冻结（DashboardStatus 四态 + TodayTask 连续摘要）；S5-BE-01 `GET /api/v1/dashboard/today` 聚合（任务时区计划判定复用 TaskScheduleCalculator、纯 StreakCalculator 连续摘要、跨用户隔离与 401）；S5-FE-01 今日页（日期问候/汇总/四态列表/骨架空错误重试）、完成/撤销精确失效今日缓存、组件测试与双视口 E2E 已交付 |
 | S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
 | S7 部署、安全与全链路验收 | ⏸ 未开始 | 依赖 S6 |
 
@@ -75,6 +75,26 @@
 - 前端：`npm run typecheck`、`npm test -- --run`（6 文件 17 测试）、`npm run build` 通过。
 - OpenAPI：`python contracts/openapi/validate.py` 通过，25 paths、55 schemas。
 - 格式检查：`git diff --check` 通过。
+
+### S5 阶段
+
+- S5-API-01 冻结今日总览契约：已完成。DashboardStatus 收敛为 notStarted/inProgress/completed/noPlan 四态；TodayTask 携带逐任务 currentStreak；总览携带全局 currentStreak/longestStreak；契约校验脚本增加 S5 静态断言（提交 13bb425）。
+- S5-BE-01 实现今日总览聚合：已完成。新增 `GET /api/v1/dashboard/today`：按每个任务 IANA 时区计算今日计划并复用 TaskScheduleCalculator；plannedCount 与 ItemService.today 同口径（min(每日目标, 剩余 pending + 今日已完成)）；纯 `StreakCalculator` 按 [max(startDate, 首事实日), min(today, endDate)] 窗口计算连续（仅 completed 计入、无计划日跳过、partial/missed 中断、makeup 不计不修复、今天未完成不计数不断链、剩余为零收敛尾部）；草稿/非计划日/剩余为零统一 noPlan 且 plannedCount=0；跨用户隔离与未登录 401 已覆盖。
+- S5-FE-01 实现今日页：已完成。日期+问候+五项汇总 Statistic+整体进度条+四态 Tag 任务列表（noPlan 不进列表）+骨架/空态（引导创建）/错误重试；ItemPage 完成/撤销成功后精确失效 `['dashboard','today']` 缓存（GATE-S5 缓存刷新要求），组件测试断言不波及无关查询；Playwright 配置放宽 expect 超时以适配远程库延迟，修复 auth spec 模块级邮箱在双 project 并发下的撞唯一约束竞态。
+
+### S5 验收证据
+
+- 后端远程 MySQL 8 全量回归：`TC_MYSQL_DATABASE=time_clock_test mvn test`，88 tests passed, 0 failures（新增 StreakCalculatorTest 16 用例表驱动连续规则 + S5TodayOverviewApiTests 7 用例聚合/隔离/401）。
+- Playwright 真实前后端链路：10 passed ×2 连续运行（s5-today desktop/mobile 新增：空态→建任务→录入→启用→未开始→完成 1 题 inProgress 1/2→最后一项自动打卡 completed 2/2 连续 1 天，全程零 /checkins 写请求；s4-completion、auth、smoke 双视口回归通过）。
+- 前端：`npm run typecheck`、`npm test -- --run`（7 文件 22 测试）、`npm run build` 通过。
+- OpenAPI：`python contracts/openapi/validate.py` 通过，25 paths、55 schemas。
+- 格式检查：`git diff --check` 通过。
+
+### GATE-S5 结论
+
+- 今日总览正确聚合清单任务与连续摘要：✅（混合状态、连续事实、隔离、401 测试通过）。
+- 任何打卡成功后精确刷新今日及相关详情缓存：✅（complete/reopen 失效 dashboard/today，组件测试覆盖）。
+- 移动与桌面组件测试通过：✅（Vitest 组件测试 + Playwright desktop/mobile 双视口）。
 
 1. **补齐 S2 验收缺口并决定是否通过 GATE-S2**：新增任务 feature 的 RTL/MSW 测试（空列表、分页、非法目标、删除取消/确认、失败保留输入、404/403 错误），修复并验证 DELETE 204 的前端路径；补充移动端 Playwright 任务页面无横向溢出。
 2. **开始 S3-API-01**：冻结学习条目、手工/粘贴/xlsx 预览确认、顺序分配和顺延契约；明确正式条目的确认语义，解除 S2 activate 成功路径依赖。

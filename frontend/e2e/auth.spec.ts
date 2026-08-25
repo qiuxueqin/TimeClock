@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 
-const email = `e2e-${Date.now()}@example.com`;
 const password = 'CorrectHorse1!';
 
 test('注册页可见且未认证访问受保护页会跳转登录', async ({ page }) => {
@@ -10,6 +9,8 @@ test('注册页可见且未认证访问受保护页会跳转登录', async ({ pa
 });
 
 test('两个浏览器上下文 Cookie 隔离且可登录恢复', async ({ browser }) => {
+  // 邮箱在测试体内随机生成：desktop/mobile 双 project 并发执行本文件，模块级邮箱会撞唯一约束。
+  const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const first = await browser.newContext();
   const second = await browser.newContext();
   try {
