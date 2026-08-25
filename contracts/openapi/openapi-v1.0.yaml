@@ -31,7 +31,6 @@ tags:
   - name: checkins
   - name: dashboard
   - name: imports
-  - name: export
 
 paths:
   # ============ 认证（S1） ============
@@ -774,9 +773,9 @@ paths:
   /tasks/{taskId}/checkins/{date}:
     get:
       tags: [checkins]
-      summary: 指定日期打卡
+      summary: 指定日期打卡详情
       operationId: getCheckin
-      description: 返回该日期计划与进度。无计划日不创建。归属校验。
+      description: 返回该日期计划与进度事实（计划/完成数、补打原因、题解摘要）；无打卡记录且非计划日返回 noPlan 视图，不产生任何写事实。归属校验；跨用户统一 404。
       security:
         - sessionCookie: []
       parameters:
@@ -795,7 +794,7 @@ paths:
           description: YYYY-MM-DD，不 UTC 重解释。
       responses:
         '200':
-          description: 打卡视图（可空）。
+          description: 打卡详情视图（含 noPlan 派生态）。
           content:
             application/json:
               schema:
@@ -809,12 +808,14 @@ paths:
                     type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
   /tasks/{taskId}/checkins/{date}/makeup:
     post:
       tags: [checkins]
       summary: 补打
       operationId: makeup
-      description: 窗口=过去 3 自然日（任务时区，不含今天）；原因必填；清单/习惯各按规则。makeup 不计连续、不可逆（DEC-12/24）。
+      description: 窗口=任务时区下过去 3 自然日（不含今天）；原日期必须是 active 任务计划日且已结算为 missed/partial；原因必填；补打需补齐该日目标条目后标记 makeup，计入完成率不计连续、不修复断链；提交后不可编辑不可撤销（DEC-10/15）。幂等键防重复提交。
       security:
         - sessionCookie: []
         - csrf: []
@@ -836,7 +837,8 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
+            minLength: 1
+            maxLength: 128
       requestBody:
         required: true
         content:
@@ -845,9 +847,36 @@ paths:
               $ref: '#/components/schemas/MakeupRequest'
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: 补打成功，返回更新后的打卡详情。
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CheckinView'
+                  requestId:
+                    type: string
+        '404':
+          description: TASK_NOT_FOUND / CHECKIN_NOT_FOUND（无记录或非计划日）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '409':
+          description: CHECKIN_ALREADY_MADE_UP（makeup 不可逆）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
         '422':
-          $ref: '#/components/responses/BadRequest'
+          description: MAKEUP_REASON_REQUIRED / MAKEUP_DATE_OUT_OF_WINDOW（今天或第 4 天）/ MAKEUP_DATE_NOT_DUE（completed/makeup 或今日计划日）。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -883,7 +912,7 @@ paths:
       tags: [checkins]
       summary: 月历
       operationId: calendarMonth
-      description: 按月返回全部或单任务打卡；筛选；状态区分 completed/partial/missed/makeup/noPlan。不泄漏他人数据或完整敏感题解。
+      description: 按月返回全部或单任务打卡；taskId 缺省为全部任务合并视图（同日多任务取最差状态）；filter 可按状态筛选。月历读取时对窗口内已过计划日执行幂等漏打结算，不产生 completed 事实。不泄漏他人数据。
       security:
         - sessionCookie: []
       parameters:
@@ -902,7 +931,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [all, completed, missed, makeup, partial]
+            enum: [all, completed, partial, missed, makeup]
       responses:
         '200':
           description: 月历。
@@ -924,7 +953,7 @@ paths:
       tags: [checkins]
       summary: 任务统计
       operationId: getTaskStats
-      description: 连续天数、清单总进度/预计完成日期、习惯累计/月完成率。归属校验。
+      description: 清单任务统计：当前/最长连续天数、总进度、预计完成日期；连续规则见不变量 7/8。归属校验；跨用户统一 404。
       security:
         - sessionCookie: []
       parameters:
@@ -950,6 +979,8 @@ paths:
                     type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TaskNotFound'
 
   # ============ 文件（S4/S7） ============
 
@@ -1047,30 +1078,6 @@ paths:
 
 
   # ============ 导出（S9） ============
-  /export:
-    get:
-      tags: [export]
-      summary: 导出学习数据
-      operationId: exportData
-      description: CSV/JSON。仅当前用户数据；含任务、条目、题解文字全文、打卡记录；不内嵌图片/原文件，不泄漏内部路径、密码、Session、CSRF、内部哈希（DEC-20）。
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: format
-          in: query
-          required: true
-          schema:
-            $ref: '#/components/schemas/ExportFormat'
-      responses:
-        '200':
-          description: 导出文件流（CSV 或 JSON，带 Content-Disposition）。
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '401':
-          $ref: '#/components/responses/Unauthorized'
 
 components:
   securitySchemes:
@@ -1355,15 +1362,6 @@ components:
           type: integer
         status:
           $ref: '#/components/schemas/ItemStatus'
-        sourcePageStart:
-          type: integer
-          nullable: true
-        sourcePageEnd:
-          type: integer
-          nullable: true
-        parseConfidence:
-          type: number
-          nullable: true
         completedAt:
           type: string
           format: date-time
@@ -1494,9 +1492,6 @@ components:
             $ref: '#/components/schemas/TodayItem'
 
     # ============ 题解 ============
-    SubmissionStatus:
-      type: string
-      enum: [draft, submitted]
     SubmissionView:
       type: object
       additionalProperties: false
@@ -1529,11 +1524,13 @@ components:
     CheckinView:
       type: object
       additionalProperties: false
-      required: [id, taskId, checkinDate, status]
+      required: [taskId, checkinDate, status]
       properties:
         id:
           type: string
           format: uuid
+          nullable: true
+          description: 无打卡事实（noPlan 派生态）时为 null。
         taskId:
           type: string
           format: uuid
@@ -1541,81 +1538,36 @@ components:
           type: string
           format: date
         status:
-          $ref: '#/components/schemas/CheckinStatus'
+          type: string
+          enum: [completed, partial, missed, makeup, noPlan]
+          description: noPlan 为派生态：非计划日或无打卡事实且未结算。
         plannedCount:
           type: integer
           nullable: true
         completedCount:
           type: integer
           nullable: true
-        actualValue:
-          type: number
-          nullable: true
-        note:
-          type: string
-          nullable: true
         makeupReason:
           type: string
           nullable: true
-        completedAt:
+        solutionSummary:
           type: string
-          format: date-time
           nullable: true
+          description: 该日已完成条目题解摘要（截断，不返回全文）。
         updatedAt:
           type: string
           format: date-time
-        version:
-          type: integer
-          description: 习惯打卡记录版本（当日编辑用）。
-    HabitCheckinRequest:
-      type: object
-      additionalProperties: false
-      required: [idempotencyKey]
-      properties:
-        actualValue:
-          type: number
-          minimum: 0
-          description: 可选；无目标时忽略。
-        note:
-          type: string
-          description: 备注；noteRequired 时必填。
-        idempotencyKey:
-          type: string
-          format: uuid
-    HabitCheckinEditRequest:
-      type: object
-      additionalProperties: false
-      required: [version, idempotencyKey]
-      properties:
-        actualValue:
-          type: number
-          minimum: 0
-        note:
-          type: string
-        version:
-          type: integer
-        idempotencyKey:
-          type: string
-          format: uuid
+          nullable: true
     MakeupRequest:
       type: object
       additionalProperties: false
-      required: [reason, idempotencyKey]
+      required: [reason]
       properties:
         reason:
           type: string
           minLength: 1
           maxLength: 500
-          description: 补打原因必填。DEC-12。
-        actualValue:
-          type: number
-          description: 习惯型补打实际量（可选）。
-        note:
-          type: string
-        idempotencyKey:
-          type: string
-          format: uuid
-          description: 补打提交后不可编辑/撤销（DEC-24）。
+          description: 补打原因必填。DEC-10；提交后不可编辑/撤销（DEC-15）。
 
     # ============ 今日总览（S5） ============
     DashboardStatus:
@@ -1692,22 +1644,13 @@ components:
         status:
           type: string
           enum: [completed, partial, missed, makeup, noPlan]
+          description: noPlan 为派生态：非计划日或无打卡事实且未结算；合并视图下同日多任务取最差状态。
         plannedCount:
           type: integer
           nullable: true
         completedCount:
           type: integer
           nullable: true
-        actualValue:
-          type: number
-          nullable: true
-        note:
-          type: string
-          nullable: true
-        solutionSummary:
-          type: string
-          nullable: true
-          description: 题解摘要，不返回完整敏感题解全文。
         makeupReason:
           type: string
           nullable: true
@@ -1721,12 +1664,13 @@ components:
           pattern: '^\d{4}-\d{2}$'
         days:
           type: array
+          description: 仅包含有打卡事实或计划日事实的日期，按日期升序。
           items:
             $ref: '#/components/schemas/CalendarDay'
     TaskStats:
       type: object
       additionalProperties: false
-      required: [task]
+      required: [task, currentStreak, longestStreak, completedItemCount, totalItemCount, remainingItemCount]
       properties:
         task:
           $ref: '#/components/schemas/TaskView'
@@ -1746,50 +1690,6 @@ components:
           format: date
           nullable: true
           description: 预计完成日期（checklist）。仅预估。
-        habitTotalCheckinDays:
-          type: integer
-        habitMonthCompletedDays:
-          type: integer
-        habitMonthCompletionRate:
-          type: number
-
-    # ============ 文件 ============
-    FilePurpose:
-      type: string
-      enum: [source_material, question_image, solution_image]
-    FileUploadResponse:
-      type: object
-      additionalProperties: false
-      required: [fileId, purpose, originalName, size, contentHash, duplicate]
-      properties:
-        fileId:
-          type: string
-          format: uuid
-        purpose:
-          $ref: '#/components/schemas/FilePurpose'
-        originalName:
-          type: string
-        size:
-          type: integer
-        contentHash:
-          type: string
-          description: 服务端重算 SHA-256，最终依据。DEC-19。
-        duplicate:
-          type: boolean
-          description: 同任务同哈希重复时 true，返回既有 fileId/batchId。DEC-19。
-        batchId:
-          type: string
-          format: uuid
-          nullable: true
-          description: 源资料上传时关联导入批次；重复时返回既有 batchId。
-        downloadUrl:
-          type: string
-          format: uri
-          nullable: true
-          description: 题解图片返回私有鉴权下载地址。
-    FileDownloadResponse:
-      type: object
-      description: 以 application/octet-stream 流式返回，响应头含 Content-Disposition（原名）。
 
     # ============ xlsx 导入 ============
     XlsxPreviewRequest:
@@ -1899,14 +1799,6 @@ components:
         skippedCount:
           type: integer
           minimum: 0
-
-    # ============ 导出 ============
-    ExportFormat:
-      type: string
-      enum: [csv, json]
-    ExportResponse:
-      type: object
-      description: 返回可下载的 CSV/JSON 文件流。DEC-20：含任务、条目、题解文字全文、打卡记录；不内嵌图片/原文件，不泄漏内部路径、密码、Session、CSRF、内部哈希。
 
     # ============ 错误 ============
     ErrorCode:

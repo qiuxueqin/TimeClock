@@ -203,6 +203,75 @@ def main() -> int:
                   "completionRate", "tasks", "currentStreak", "longestStreak"):
         if field not in dash_resp.get("required", []):
             errors.append(f"S5 DashboardTodayResponse 缺少必填字段: {field}")
+
+    # 9. S6 日历/统计/补打契约断言（TEST-S6-API-01-01）
+    calendar_op = paths.get("/calendar", {}).get("get", {})
+    if not calendar_op:
+        errors.append("S6 /calendar 缺失 GET")
+    else:
+        sec = {k for s in calendar_op.get("security", []) for k in s}
+        if "sessionCookie" not in sec or "csrf" in sec:
+            errors.append("S6 /calendar 必须为只读 sessionCookie 接口")
+        month_param = [p for p in calendar_op.get("parameters", []) if p.get("name") == "month"]
+        if not month_param or not month_param[0].get("required"):
+            errors.append("S6 /calendar 必须要求 month 查询参数")
+
+    makeup_op = paths.get("/tasks/{taskId}/checkins/{date}/makeup", {}).get("post", {})
+    if not makeup_op:
+        errors.append("S6 makeup 路径缺失")
+    else:
+        names = [p.get("name") for p in makeup_op.get("parameters", [])]
+        if "Idempotency-Key" not in names:
+            errors.append("S6 makeup 缺 Idempotency-Key")
+        if "不可编辑" not in makeup_op.get("description", "") and "不可逆" not in makeup_op.get("description", ""):
+            errors.append("S6 makeup 描述必须声明不可逆（DEC-15）")
+
+    checkin_get = paths.get("/tasks/{taskId}/checkins/{date}", {}).get("get", {})
+    if not checkin_get:
+        errors.append("S6 日期详情 GET 缺失")
+    stats_path = paths.get("/tasks/{taskId}/stats", {})
+    if not stats_path.get("get"):
+        errors.append("S6 /tasks/{{taskId}}/stats 缺失 GET")
+    elif stats_path["get"].get("responses", {}).get("404") is None:
+        errors.append("S6 stats 必须声明 404 越权响应")
+
+    checkin_view = schemas.get("CheckinView", {})
+    cv_props = checkin_view.get("properties", {})
+    if set(cv_props) & {"actualValue", "note", "version"}:
+        errors.append(f"S6 CheckinView 不得保留习惯型字段: {sorted(set(cv_props) & {'actualValue', 'note', 'version'})}")
+    cv_status = cv_props.get("status", {}).get("enum")
+    if cv_status != ["completed", "partial", "missed", "makeup", "noPlan"]:
+        errors.append(f"S6 CheckinView.status 枚举错误: {cv_status}")
+
+    makeup_req = schemas.get("MakeupRequest", {})
+    mr_props = makeup_req.get("properties", {})
+    if "reason" not in makeup_req.get("required", []):
+        errors.append("S6 MakeupRequest.reason 必填")
+    if set(mr_props) & {"actualValue", "note", "idempotencyKey"}:
+        errors.append("S6 MakeupRequest 不得保留习惯型/idempotencyKey 体字段（幂等键在请求头）")
+    if mr_props.get("reason", {}).get("maxLength") != 500:
+        errors.append("S6 MakeupRequest.reason 必须限制最多 500 字符")
+
+    day_status = schemas.get("CalendarDay", {}).get("properties", {}).get("status", {}).get("enum")
+    if day_status != ["completed", "partial", "missed", "makeup", "noPlan"]:
+        errors.append(f"S6 CalendarDay.status 枚举错误: {day_status}")
+
+    task_stats = schemas.get("TaskStats", {})
+    ts_props = task_stats.get("properties", {})
+    if set(ts_props) & {"habitTotalCheckinDays", "habitMonthCompletedDays", "habitMonthCompletionRate"}:
+        errors.append("S6 TaskStats 不得保留习惯型统计字段")
+    for field in ("task", "currentStreak", "longestStreak", "completedItemCount",
+                  "totalItemCount", "remainingItemCount"):
+        if field not in task_stats.get("required", []):
+            errors.append(f"S6 TaskStats 缺少必填字段: {field}")
+
+    for forbidden_schema in ("HabitCheckinRequest", "HabitCheckinEditRequest",
+                             "SubmissionStatus", "ExportFormat", "FilePurpose"):
+        if forbidden_schema in schemas:
+            errors.append(f"S6 精简清理后不得残留 schema: {forbidden_schema}")
+    if "/export" in paths:
+        errors.append("S6 精简范围外路径 /export 不得存在")
+
     if errors:
         for e in errors:
             print(f"[ERROR] {e}")
