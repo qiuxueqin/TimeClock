@@ -10,7 +10,7 @@
 | S3 条目、xlsx 导入、分配顺延 | 🟡 主要实现完成，GATE-S3 待远程 MySQL/E2E 验收 | V5 learning_items、V6 幂等表、条目 CRUD/粘贴、同步 POI xlsx 预览确认、持久化确认幂等、标题去重、activate 成功路径、today pending 顺序切片、后端 S3 专项 API 测试、前端 RTL/MSW 测试和前端入口已实现；完整跨日事实与 Playwright 闭环仍待后续 checkin 阶段/环境验收 |
 | S4 文字题解、完成/撤销、自动打卡 | ✅ 已完成 | V7 checkins、题解保存/完成/撤销契约与事务（注入 Clock、任务/条目行锁、幂等键先锁后写）、并发幂等专项测试、前端完成闭环（启用/条目入口/今日进度）及 Playwright 全链路 E2E（桌面+移动 8/8）已交付；远程 MySQL 全量回归 65/65 通过 |
 | S5 今日页 | ✅ 已完成 | S5-API-01 契约冻结（DashboardStatus 四态 + TodayTask 连续摘要）；S5-BE-01 `GET /api/v1/dashboard/today` 聚合（任务时区计划判定复用 TaskScheduleCalculator、纯 StreakCalculator 连续摘要、跨用户隔离与 401）；S5-FE-01 今日页（日期问候/汇总/四态列表/骨架空错误重试）、完成/撤销精确失效今日缓存、组件测试与双视口 E2E 已交付 |
-| S6 日历、连续天数、补打 | ⏸ 未开始 | 依赖 S4、S5 |
+| S6 日历、连续天数、补打 | ✅ 已完成 | S6-API-01 契约冻结（CheckinView 五态、MakeupRequest 仅原因必填）；S6-DB-01 V8 makeup 原因 CHECK；S6-BE-01 StreakCalculator 表驱动 19 用例；S6-BE-02 月历/详情/统计；S6-BE-03 漏打结算（每小时调度 + 读取时结算）；S6-BE-04 补打（窗口/原因/幂等/409 不可逆）；S6-FE-01 月历页与补打交互；S6-QA-01 双视口全链路 E2E 通过 |
 | S7 部署、安全与全链路验收 | ⏸ 未开始 | 依赖 S6 |
 
 ## 已完成步骤
@@ -95,6 +95,29 @@
 - 今日总览正确聚合清单任务与连续摘要：✅（混合状态、连续事实、隔离、401 测试通过）。
 - 任何打卡成功后精确刷新今日及相关详情缓存：✅（complete/reopen 失效 dashboard/today，组件测试覆盖）。
 - 移动与桌面组件测试通过：✅（Vitest 组件测试 + Playwright desktop/mobile 双视口）。
+
+### S6 阶段
+
+- S6-API-01 冻结日历/统计/补打契约：已完成。`GET /api/v1/calendar`（month 必填、taskId/filter 可选）、`GET /api/v1/tasks/{id}/checkins/{date}` 五态 CheckinView（completed/partial/missed/makeup/noPlan）、`GET /api/v1/tasks/{id}/stats`、`POST .../checkins/{date}/makeup`（Idempotency-Key 必填、仅原因必填）；清理习惯型与导出残留并增加 S6 契约断言（提交 7dceffa）。
+- S6-DB-01 补打事实约束：已完成。V8 迁移增加 `status='makeup'` 必须携带非空原因的 CHECK；迁移测试覆盖同日唯一、空原因拒绝与级联删除（提交 5a9038c）。
+- S6-BE-01 连续天数表驱动补齐：已完成。新增撤销第二日断链、夹无计划日跳过与补打漏打日不修复场景，19 用例通过（提交 f369d59）。
+- S6-BE-03 漏打结算：已完成。每小时按任务时区幂等结算过期计划日为 missed/partial，makeup 不可改写，跳过草稿与未来任务（提交 1e20bfb）；月历读取时对 active 任务同步执行 settleTask，避免依赖调度时点。
+- S6-BE-02 实现月历、日期详情与任务统计：已完成。CalendarService 合并同日多任务取最差状态（missed>partial>makeup>completed）并求和计划/完成数，filter 白名单筛选，跨用户隔离与归属 404；TaskStatsService 复用 StreakCalculator 输出当前/最长连续、条目计数与预计完成日期（active 才有 estimate）；修复 RowCallbackHandler 形参 lambda 中误用 while(rs.next()) 跳过首行的问题。测试 TEST-S6-BE-04-01 窗口边界（今天/昨天/第 3 天/第 4 天/空原因/幂等回放/已补打 409/无事实 404）与 TEST-S6-BE-02-01 查询（跨月/filter/合并视图最差状态/跨用户隔离/统计连续）5 用例通过，全量回归 107/107。
+- S6-FE-01 实现月历、详情与补打交互：已完成。CalendarPage 七列自绘月历网格，状态以文字+颜色+图标三通道表达（已完成/部分完成/已漏打/已补打/无计划）；月份 DatePicker、任务 Select（合并视图）、状态 filter 三控件联动 queryKey；点击日期打开 Drawer 详情（进度、补打原因、题解摘要）；仅窗口内 missed/partial 展示补打表单（原因必填+去空白+500 上限），警示文案明确"计入完成率但不计入连续打卡天数，也无法撤销"；补打成功精确失效 calendar/checkin-detail/dashboard today 缓存。组件测试 TEST-S6-FE-01-01 五用例覆盖跨月切换、五状态渲染、filter、空原因本地拦截+成功刷新缓存、已补打只读视图；antd Select/DatePicker 在 jsdom+fake timers 下的可靠交互模式（mousedown 开下拉、键盘输入+Enter 提交月份）已在测试中固化。
+- S6-QA-01 全链路 E2E：已完成。`e2e/s6-calendar.spec.ts` 双视口验证 TEST-S6-QA-01-01 闭环：UI 创建任务（开始日期=今天-4）→录入 10 题→启用 → SQL 回拨 created_at 并播种前 3 个计划日 completed 事实 → 日历读取触发漏打结算形成昨日 missed → 选择任务、空原因拦截、有效原因补打成功（状态变 makeup、显示不可撤销提示）→ 完成今日 2 题（DEC-09 自动打卡）→ 断言今日页/详情接口/日历网格/统计接口四处一致：currentStreak=1（missed 断链后由今天重新起算）、longestStreak=3（makeup 不修复）、completedItemCount=8。
+
+### S6 验收证据
+
+- 后端远程 MySQL 8 全量回归：`TC_MYSQL_DATABASE=time_clock_test mvn test`，107 tests passed, 0 failures（新增 S6CheckinCalendarApiTests 5 用例 + 此前 S6-BE-01/DB-03 步骤累计）。
+- Playwright 真实前后端链路：12 passed ×1 连续运行（s6-calendar desktop/mobile 新增；s4-completion、s5-today、auth、smoke 双视口回归全部通过）。
+- 前端：`npm run typecheck`、`npx vitest run`（9 文件 28 测试，含 CalendarPage 5 用例）、`npm run build` 通过。
+- OpenAPI：`python contracts/openapi/validate.py` 通过，24 路由、47 schema。
+
+### GATE-S6 结论
+
+- 月历、统计、日结、补打窗口、连续链测试全部通过：✅（远程 MySQL 107/107，组件与 API 测试齐备）。
+- 今日、详情、日历和统计一致性 E2E 通过：✅（双视口 s6-calendar 断言四处一致）。
+- 补打不能制造重复完成或修复连续链：✅（同键回放首次结果、已 makeup 409 CHECKIN_ALREADY_MADE_UP；E2E 断言 longestStreak 保持 3、currentStreak 由今日重新起算）。
 
 1. **补齐 S2 验收缺口并决定是否通过 GATE-S2**：新增任务 feature 的 RTL/MSW 测试（空列表、分页、非法目标、删除取消/确认、失败保留输入、404/403 错误），修复并验证 DELETE 204 的前端路径；补充移动端 Playwright 任务页面无横向溢出。
 2. **开始 S3-API-01**：冻结学习条目、手工/粘贴/xlsx 预览确认、顺序分配和顺延契约；明确正式条目的确认语义，解除 S2 activate 成功路径依赖。

@@ -10,6 +10,7 @@
 - S3：学习条目 V5、手工/粘贴条目、同步 POI xlsx 预览确认、标题去重、草稿启用条目检查、按任务时区返回 pending 顺序切片已实现；完整跨日顺延等待 S4/S6 的日期事实，前端条目/导入路由已加入。
 - S4：文字题解与完成闭环已完成。`ItemService.complete/reopen` 在同一事务内更新条目、当日进度和 checkins，注入 Clock、固定锁序（先 tasks 行锁再写幂等键）并通过 `S4IdempotencyConcurrencyTests` 并发验收；V7 建立 `(task_id,checkin_date)` 唯一打卡事实；OpenAPI 清理为纯文字题解契约；前端提供启用/条目入口、题解编辑器、今日进度展示且全程无 /checkins 写请求；Playwright 全链路（桌面+移动）8/8 通过，远程 MySQL 全量回归 65/65 通过。跨日撤销的打卡归属留待 S6 日结/补打补齐。
 - S5：今日页已完成。`schedule` 包提供 `GET /api/v1/dashboard/today` 只读聚合：按各任务 IANA 时区判定计划日并复用 TaskScheduleCalculator；纯函数 StreakCalculator 输出逐任务与全局连续摘要（仅 completed 计入、无计划日跳过、partial/missed 中断、makeup 不计不修复、今天未完成不计数不断链）；DashboardStatus 四态 notStarted/inProgress/completed/noPlan。前端 TodayPage 渲染日期问候、五项汇总、整体进度与四态列表，骨架/空态/错误重试齐备；ItemPage 完成/撤销后精确失效 dashboard today 缓存；组件测试与双视口 E2E 通过。
+- S6：打卡记录、日历、连续天数与补打已完成。`checkin` 包提供月历（合并视图同日取最差状态 missed>partial>makeup>completed 并求和计数）、五态 CheckinView 日期详情（含题解摘要）、任务统计（复用 StreakCalculator）与补写；`CheckinSettlementService` 每小时按任务时区幂等结算过期计划日为 missed/partial，且月历读取时对 active 任务同步结算；MakeupService 强制原因必填、窗口为过去 3 自然日（不含今天）、幂等回放首次结果、已 makeup 409 不可逆；V8 增加 makeup 必须携带原因的 CHECK。前端 CalendarPage 三通道状态渲染 + Drawer 详情 + 窗口内补打表单，成功后精确失效 calendar/checkin-detail/dashboard today 缓存；双视口 E2E 验证今日/详情/日历/统计四处一致且 makeup 不修复连续链。
 
 ## 2. 文档地图
 
@@ -67,11 +68,19 @@ MySQL 8（远程实例）
 - 缓存一致性（GATE-S5）：`ItemPage` 完成/撤销成功后精确失效 `['dashboard','today']`；组件测试断言无关查询（如 tasks 列表）不被波及。
 - E2E：`frontend/e2e/s5-today.spec.ts` 覆盖空态→未开始→进行中→已完成与连续摘要刷新，全程零 /checkins 写请求；Playwright 配置 expect.timeout=15s 适配远程库延迟。
 
+## 4.4 S6 打卡历史与补打实现摘要
+
+- `checkin` 包四服务：CalendarService（月历合并视图，同日多任务取最差状态 missed>partial>makeup>completed、求和 planned/completed、filter 白名单筛选；读取时对 active 任务执行 settleTask）、MakeupService（补打 + 日期详情五态视图）、TaskStatsService（统计复用 StreakCalculator 与 TaskScheduleCalculator 预计完成日期）、CheckinSettlementService（每小时调度 + 幂等重算过期计划日：planned=min(每日目标, 截至当日已录入-此前已完成)，planned<1 跳过，makeup 事实不可改写）。
+- 补打校验链：归属锁 tasks 行 → 幂等 begin → 原因 trim 非空 422 MAKEUP_REASON_REQUIRED → active 检查 → 计划日范围 → 窗口为过去 3 自然日（不含今天）422 MAKEUP_DATE_OUT_OF_WINDOW → 已 makeup 409 CHECKIN_ALREADY_MADE_UP → 无事实 404 CHECKIN_NOT_FOUND → completed 422；UPDATE status='makeup' 且 completed_count=GREATEST(completed_count, planned_count)。V8 CHECK 约束 makeup 必须携带非空原因。
+- 连续规则（不变量 7/8）：makeup 计入完成率但不连接不修复连续链——E2E 断言播种 3 天 completed + 补打昨日后 currentStreak=0（今天完成前）/1（完成后重新起算）、longestStreak 保持 3。
+- 前端 CalendarPage：自绘七列网格按钮 `data-testid="calendar-day" data-date data-status`，状态文字+颜色+图标三通道；月份 DatePicker / 任务 Select（全部任务合并视图）/ 状态筛选联动 queryKey `['calendar', month, taskId, filter]`；Drawer 详情仅对窗口内 missed/partial 展示补打表单，成功后失效 `['calendar']`、`['checkin-detail']`、`['dashboard','today']`。
+- E2E：`frontend/e2e/s6-calendar.spec.ts` 双视口全链路（注册→建任务 startDate=今天-4→录入启用→SQL 回拨 created_at 并播种 3 个 completed 历史日→日历读取触发漏打结算形成昨日 missed→UI 补打→完成今日 2 题→断言今日页/详情/日历/统计四处一致）。
+
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
 - `learning_items`：V5 持久化任务条目 `title/content/analysis/external_url`、任务内唯一且从 1 开始的 `sort_order`、`pending/completed` 状态、`solution_text`、`completed_at` 与审计字段；通过 `task_id` 外键 `ON DELETE CASCADE` 随任务物理删除，并有任务+状态+顺序及任务标题索引。
-- `checkins`：按任务+日期唯一，completed/partial/missed/makeup；V7 已建立，清单完成达标时由完成事务自动 upsert。
+- `checkins`：按任务+日期唯一，completed/partial/missed/makeup；V7 已建立，清单完成达标时由完成事务自动 upsert；V8 增加 makeup 必须携带非空原因的 CHECK；S6 结算服务幂等写入 missed/partial。
 - `idempotency_keys`：V6 持久化导入确认与其他确认写操作的用户/任务范围请求哈希、首次响应和 30 天过期时间；S4 完成/撤销复用同一服务，同键同请求重放，同键不同请求返回冲突。
 - `audit_logs`：最小操作审计，不记录题解全文或认证秘密。
 
