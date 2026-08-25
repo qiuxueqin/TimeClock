@@ -171,4 +171,38 @@ describe('ItemPage 完成闭环', () => {
     await screen.findByText(/已有题目/);
     expect(screen.queryByTestId('today-progress')).not.toBeInTheDocument();
   });
+
+  // GATE-S5：任何打卡成功后精确刷新今日及相关详情缓存——只失效 dashboard/today，不波及无关查询。
+  it('invalidates exactly the dashboard today cache after complete and reopen', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client.setQueryData(['dashboard', 'today'], { date: '2026-08-25' });
+    client.setQueryData(['tasks'], { items: [] });
+    let calls = 0;
+    server.use(
+      http.get('/api/v1/tasks/task-1/items', () => { calls += 1; return ok({ items: [calls === 1 ? item : solvedCompleted], page: 1, pageSize: 20, total: 1 }); }),
+      http.post('/api/v1/items/item-1/complete', () => ok(completionResponse('completed'))),
+      http.post('/api/v1/items/item-1/reopen', () => ok({ ...completionResponse('partial'), item: { ...solvedCompleted, status: 'pending' as const } })),
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/tasks/task-1/items']}>
+          <Routes><Route path="/tasks/:taskId/items" element={<ItemPage />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByRole('textbox', { name: '题解-item-1' }), '题解内容');
+    await user.click(screen.getByRole('button', { name: '完成本题' }));
+    await screen.findByRole('button', { name: '撤销完成' });
+    expect(client.getQueryState(['dashboard', 'today'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['tasks'])?.isInvalidated).toBe(false);
+
+    // 撤销同样回写缓存失效标记；重新写入今日数据后再次撤销仍精确失效。
+    client.setQueryData(['dashboard', 'today'], { date: '2026-08-25' });
+    await user.click(screen.getByRole('button', { name: '撤销完成' }));
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
+    expect(client.getQueryState(['dashboard', 'today'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['tasks'])?.isInvalidated).toBe(false);
+  });
 });

@@ -22,7 +22,14 @@ export type PasteCandidate = { title: string; content?: string | null; analysis?
 export type PastePreviewResponse = { totalLines: number; validLines: number; errorLines: { lineNumber: number; reason: string }[]; candidates: PasteCandidate[] };
 export type XlsxCandidate = { title: string; content?: string | null; analysis?: string | null; link?: string | null; order?: number | null; duplicate?: boolean };
 export type XlsxPreviewResponse = { totalRows: number; validRows: number; errorRows: { rowNumber: number; reason: string }[]; candidates: XlsxCandidate[] };
-export type DashboardTodayResponse = { date: string; todayCount: number; completedCount: number; pendingCount: number; completionRate: number; tasks: { task: TaskView; status: string; completedCount: number; plannedCount: number; reminderText?: string | null }[]; currentStreak: number; longestStreak: number };
+
+/** S5-API-01 冻结契约：今日总览。 */
+export type DashboardStatus = 'notStarted' | 'inProgress' | 'completed' | 'noPlan';
+export type TodayTask = { task: TaskView; status: DashboardStatus; completedCount: number; plannedCount: number; currentStreak: number };
+export type DashboardTodayResponse = {
+  date: string; todayCount: number; completedCount: number; pendingCount: number; completionRate: number;
+  tasks: TodayTask[]; currentStreak: number; longestStreak: number;
+};
 
 export type TaskCreateRequest = {
   name: string; description?: string; type: TaskType; startDate: string; endDate?: string | null;
