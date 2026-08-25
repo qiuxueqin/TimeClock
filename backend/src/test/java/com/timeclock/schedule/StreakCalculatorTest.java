@@ -16,6 +16,49 @@ class StreakCalculatorTest {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private final StreakCalculator calculator = new StreakCalculator();
 
+    /** S6-BE-01 撤销场景：撤销第二日的完成后该日回退 partial，链断开、局部重算。 */
+    @Test
+    void undoingSecondDayBreaksChainAtThatDay() {
+        LocalDate today = LocalDate.of(2026, 8, 24);
+        var before = calculator.calculate(facts(today.minusDays(2), null, today, 1,
+                Map.of(today.minusDays(2), "completed", today.minusDays(1), "completed", today, "completed")));
+        assertEquals(3, before.currentStreak());
+
+        // 撤销第二日：当日打卡 completed -> partial。
+        var after = calculator.calculate(facts(today.minusDays(2), null, today, 1,
+                Map.of(today.minusDays(2), "completed", today.minusDays(1), "partial", today, "completed")));
+        assertEquals(1, after.currentStreak());
+        assertEquals(1, after.longestStreak());
+    }
+
+    /** S6-BE-01 夹无计划日：任务开始日前或结束后的日期跳过不断链。 */
+    @Test
+    void noPlanDaysInsideWindowAreSkippedWithoutBreaking() {
+        LocalDate today = LocalDate.of(2026, 8, 24);
+        // 开始日期为今天前一日：之前的日期不是计划日，不进入窗口也不打断。
+        var result = calculator.calculate(facts(today.minusDays(1), null, today, 1,
+                Map.of(today.minusDays(1), "completed", today, "completed")));
+        assertEquals(2, result.currentStreak());
+        assertEquals(2, result.longestStreak());
+    }
+
+    /** S6-BE-01 补打漏打日：makeup 替换 missed 后仍不计入且不修复链。 */
+    @Test
+    void makeupOverMissedDayStillDoesNotCountOrRepair() {
+        LocalDate today = LocalDate.of(2026, 8, 24);
+        // 结算为 missed 时：前后两段被中断。
+        var withMissed = calculator.calculate(facts(today.minusDays(2), null, today, 1,
+                Map.of(today.minusDays(2), "completed", today.minusDays(1), "missed", today, "completed")));
+        assertEquals(1, withMissed.currentStreak());
+        assertEquals(1, withMissed.longestStreak());
+
+        // 补打后 missed -> makeup：完成率更新但连续链保持断开。
+        var withMakeup = calculator.calculate(facts(today.minusDays(2), null, today, 1,
+                Map.of(today.minusDays(2), "completed", today.minusDays(1), "makeup", today, "completed")));
+        assertEquals(1, withMakeup.currentStreak());
+        assertEquals(1, withMakeup.longestStreak());
+    }
+
     private StreakCalculator.Facts facts(LocalDate start, LocalDate end, LocalDate today,
                                          int pending, Map<LocalDate, String> checkins) {
         return new StreakCalculator.Facts(start, end, today, pending, checkins);
