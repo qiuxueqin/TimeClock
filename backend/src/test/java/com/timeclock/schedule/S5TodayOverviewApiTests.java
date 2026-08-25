@@ -284,9 +284,11 @@ class S5TodayOverviewApiTests {
     }
 
     private void seedCheckin(String taskId, LocalDate date, String status) {
-        jdbc.update("INSERT INTO checkins (id,task_id,checkin_date,status,planned_count,completed_count,created_at,updated_at)"
-                        + " VALUES (?,?,?,?,1,1,NOW(6),NOW(6))",
-                UUID.randomUUID().toString(), taskId, date, status);
+        // V8 约束：makeup 必须携带非空原因。
+        String reason = "makeup".equals(status) ? "漏打补做" : null;
+        jdbc.update("INSERT INTO checkins (id,task_id,checkin_date,status,planned_count,completed_count,makeup_reason,created_at,updated_at)"
+                        + " VALUES (?,?,?,?,1,1,?,NOW(6),NOW(6))",
+                UUID.randomUUID().toString(), taskId, date, status, reason);
     }
 
     private LocalDate tomorrow(LocalDate today) { return today.plusDays(1); }
