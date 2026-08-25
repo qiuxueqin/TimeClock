@@ -124,6 +124,45 @@ export const importApi = {
 
 export const dashboardApi = { today: () => request<DashboardTodayResponse>('/dashboard/today') };
 
+/** S6-API-01 冻结契约：日历 / 统计 / 补打。 */
+export type CheckinStatus = 'completed' | 'partial' | 'missed' | 'makeup' | 'noPlan';
+export type CalendarDay = {
+  date: string;
+  status: CheckinStatus;
+  plannedCount?: number | null;
+  completedCount?: number | null;
+  makeupReason?: string | null;
+};
+export type CalendarMonthResponse = { month: string; days: CalendarDay[] };
+export type TaskStats = {
+  task: TaskView; currentStreak: number; longestStreak: number;
+  completedItemCount: number; totalItemCount: number; remainingItemCount: number;
+  estimatedCompletionDate?: string | null;
+};
+export type CheckinView = {
+  id: string | null; taskId: string; checkinDate: string; status: CheckinStatus;
+  plannedCount?: number | null; completedCount?: number | null; makeupReason?: string | null;
+  solutionSummary?: string | null; updatedAt?: string | null;
+};
+
+export const checkinApi = {
+  calendar: (month: string, params: { taskId?: string; filter?: Exclude<CheckinStatus, 'noPlan'> | 'all' } = {}) => {
+    const query = new URLSearchParams({ month });
+    if (params.taskId) query.set('taskId', params.taskId);
+    if (params.filter && params.filter !== 'all') query.set('filter', params.filter);
+    return request<CalendarMonthResponse>(`/calendar?${query.toString()}`);
+  },
+  stats: (taskId: string) => request<TaskStats>(`/tasks/${encodeURIComponent(taskId)}/stats`),
+  detail: (taskId: string, date: string) =>
+    request<CheckinView>(`/tasks/${encodeURIComponent(taskId)}/checkins/${date}`),
+  makeup: (taskId: string, date: string, reason: string) =>
+    request<CheckinView>(`/tasks/${encodeURIComponent(taskId)}/checkins/${date}/makeup`, {
+      method: 'POST',
+      headers: idempotencyKey(),
+      body: JSON.stringify({ reason }),
+    }),
+};
+
 export const taskApi = {
   list: (params: { status?: TaskStatus; page?: number; pageSize?: number } = {}) => {
     const query = new URLSearchParams();

@@ -6,6 +6,7 @@ import { TaskListPage } from '@/features/tasks/TaskListPage';
 import { ItemPage } from '@/features/items/ItemPage';
 import { ImportPage } from '@/features/imports/ImportPage';
 import { TodayPage } from '@/features/dashboard/TodayPage';
+import { CalendarPage } from '@/features/checkins/CalendarPage';
 
 export function AppRoutes() {
   return <Routes>
@@ -14,6 +15,7 @@ export function AppRoutes() {
     <Route element={<ProtectedRoute />}>
       <Route path="/" element={<Home />} />
       <Route path="/today" element={<TodayPage />} />
+      <Route path="/calendar" element={<CalendarPage />} />
       <Route path="/tasks" element={<TaskListPage />} />
       <Route path="/tasks/new" element={<TaskFormPage />} />
       <Route path="/tasks/:taskId/edit" element={<TaskFormPage />} />

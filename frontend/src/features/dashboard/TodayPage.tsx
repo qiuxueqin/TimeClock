@@ -49,6 +49,9 @@ export function TodayPage() {
     <main data-testid="today-page" style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
       <Typography.Title level={2} style={{ marginBottom: 4 }}>{greeting()}，今天要继续打卡</Typography.Title>
       <Typography.Text type="secondary" data-testid="today-date">{data.date}</Typography.Text>
+      <div style={{ marginTop: 8 }}>
+        <Link to="/calendar">查看打卡日历</Link>
+      </div>
       <div data-testid="today-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 24, margin: '16px 0 8px' }}>
         <Statistic title="今日任务" value={data.todayCount} suffix="项" />
         <Statistic title="已完成" value={data.completedCount} suffix="项" />
