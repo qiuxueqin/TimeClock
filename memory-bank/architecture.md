@@ -76,6 +76,14 @@ MySQL 8（远程实例）
 - 前端 CalendarPage：自绘七列网格按钮 `data-testid="calendar-day" data-date data-status`，状态文字+颜色+图标三通道；月份 DatePicker / 任务 Select（全部任务合并视图）/ 状态筛选联动 queryKey `['calendar', month, taskId, filter]`；Drawer 详情仅对窗口内 missed/partial 展示补打表单，成功后失效 `['calendar']`、`['checkin-detail']`、`['dashboard','today']`。
 - E2E：`frontend/e2e/s6-calendar.spec.ts` 双视口全链路（注册→建任务 startDate=今天-4→录入启用→SQL 回拨 created_at 并播种 3 个 completed 历史日→日历读取触发漏打结算形成昨日 missed→UI 补打→完成今日 2 题→断言今日页/详情/日历/统计四处一致）。
 
+## 4.5 UI 阶段（功能后全局界面重设计）
+
+- **主题基础设施**：`src/styles/theme.ts` 导出 `lightTheme`/`darkTheme`（淡紫 #7666F0 主色、天蓝 #3FA0F0 信息色、品牌渐变常量 `BRAND_GRADIENT`、圆角 12/控件高 36）与暗色提亮主色 #9083FF；`src/app/ThemeContext.tsx` 提供 `ThemeProvider`/`useTheme()`，初始模式 = localStorage `timeclock.theme` → 系统偏好，切换写回并设置 `<html data-theme>`；`App.tsx` 组合顺序 ThemeProvider > ThemedConfig(ConfigProvider locale=zhCN + theme + `button={{autoInsertSpace:false}}`) > QueryClientProvider > BrowserRouter > AuthProvider。注意：antd 双汉字按钮自动插空格由 ConfigProvider 的 `button` prop 控制而非 theme.components（后者仅样式），单元测试不包 ConfigProvider 时需在 Button 上单独传 `autoInsertSpace={false}`。
+- **CSS 变量双模式**：`global.css` 以 `:root` 定义 --bg-layout/--bg-card/--border/--shadow-card/--text-*/--brand-purple/sky/gradient/soft 与状态语义色（--status-*-bg/-dot），`html[data-theme='dark']` 整组覆盖；`.tc-card` 工具类（白卡+圆角16+轻投影）为各页面卡片统一基底。
+- **导航壳** `src/components/AppLayout.tsx/.module.css`：桌面 ≥768px 左侧 220px 固定侧边栏（渐变 Logo、今日/打卡日历/任务管理 NavLink 选中态浅紫底、底部用户邮箱+登出+亮暗切换），移动端顶部细条 + 底部安全区 Tab 栏；内容区 max-width 1040px。`routes.tsx` 在 ProtectedRoute 内以布局路由嵌套全部受保护页面（Outlet），登录/注册不带壳，`/` 重定向渲染 TodayPage。
+- **页面重设计**：8 个页面均采用 tc-card 卡片风 + CSS Module；登录页白卡+渐变标题区，今日页五统计卡（保留 antd Statistic 以兼容 `.ant-statistic-content-value` 断言）+状态竖条任务行+渐变进度条，日历页工具栏卡片化+单元格浅色底三通道状态+图例条+Drawer 分组排版（补打原因保持单元素连续文本 `补打原因：<reason>`），任务列表卡片网格+删除 Modal.confirm，条目页今日进度横幅+序号圆标+粘贴导入区块，导入页虚线上传卡+疑似重复标记。
+- **测试契约红线**：所有 data-testid（today-page/today-task-row/calendar-day/makeup-reason/today-progress 等）、aria-label（选择月份/选择任务/筛选状态/新条目标题/粘贴条目/题解-{id}）、关键文案与导出常量 CHECKIN_STATUS_META/DASHBOARD_STATUS_META 逐字保留；改版后 typecheck/build 通过，27/28 Vitest 通过（1 例 CalendarPage 超时经 git stash 基线复现确认为 jsdom+fake timers 环境偶发，非回归）。
+
 
 - `users`、`user_sessions`：认证。V3 精简修正后，`users` 保留 `id`、`email`、`password_hash`、`timezone`、`status`、审计字段及邮箱规范化唯一约束；不再包含 `overdue_reminder_visible`、`version`。
 - `tasks`：仅 `draft`/`active` 清单任务、daily 目标、任务时区、日期边界；V4 迁移增加 `user_id` 外键、同用户同名唯一约束、`(user_id, status)` 查询索引及状态/频率/目标/日期范围数据库约束。
