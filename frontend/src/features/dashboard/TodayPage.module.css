@@ -1,0 +1,162 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ===== 问候区 ===== */
+.greeting {
+  padding: 4px 4px 0;
+}
+
+.greetingTitle {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.dateRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.calendarLink {
+  color: var(--brand-sky);
+  text-decoration: none;
+}
+
+.calendarLink:hover {
+  text-decoration: underline;
+}
+
+/* ===== 统计卡片行 ===== */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.statCard {
+  padding: 16px 18px;
+}
+
+.statStreak {
+  position: relative;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    var(--brand-gradient) border-box;
+}
+
+@media (max-width: 767px) {
+  .stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 479px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 五张卡在两列网格中最后一张占满整行 */
+  .statCard:last-child {
+    grid-column: span 2;
+  }
+}
+
+/* ===== 整体进度 ===== */
+.progressCard {
+  padding: 18px 20px;
+}
+
+.progressLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.progressTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progressValue {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.progressBar :global(.ant-progress-inner) {
+  border-radius: 999px;
+}
+
+/* ===== 今日任务列表 ===== */
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.taskRow:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.statusBar {
+  width: 4px;
+  align-self: stretch;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.taskMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.taskName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 8px;
+}
+
+.taskDesc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.taskSide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

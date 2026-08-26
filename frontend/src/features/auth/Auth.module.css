@@ -1,0 +1,64 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 0%, rgba(139, 124, 246, 0.14), transparent),
+    radial-gradient(ellipse 50% 35% at 85% 15%, rgba(77, 168, 245, 0.12), transparent),
+    var(--bg-layout);
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 36px 32px 32px;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: var(--brand-gradient);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(118, 102, 240, 0.4);
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.submit {
+  width: 100%;
+  height: 42px;
+  border-radius: 12px;
+  font-size: 15px;
+  margin-top: 8px;
+}
+
+.switch {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

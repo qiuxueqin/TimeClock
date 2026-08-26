@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Button, Form, Input, Typography } from 'antd';
+import { Alert, Button, Form, Input } from 'antd';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import { ApiError, authApi, getCsrf, type UserView } from '@/api/client';
+import styles from './Auth.module.css';
 
 const credentialsSchema = z.object({ email: z.string().email('请输入有效邮箱'), password: z.string().min(8, '密码至少 8 位') });
 
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 const AuthContext = React.createContext<{ state: AuthState; setState: React.Dispatch<React.SetStateAction<AuthState>> } | null>(null);
 
-function useAuth() {
+export function useAuth() {
   const value = React.useContext(AuthContext);
   if (!value) throw new Error('AuthProvider missing');
   return value;
@@ -46,7 +47,23 @@ function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       navigate('/today', { replace: true });
     } catch (e) { setError(e instanceof Error ? e.message : '请求失败'); }
   };
-  return <main style={{ maxWidth: 420, margin: '4rem auto' }}><Typography.Title level={2}>{mode === 'login' ? '登录' : '注册'}</Typography.Title>{error && <Alert role="alert" message={error} type="error" />}<Form form={form} layout="vertical" onFinish={submit}><Form.Item label="邮箱" name="email" required><Input autoComplete="email" /></Form.Item><Form.Item label="密码" name="password" required><Input.Password autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></Form.Item>{mode === 'register' && <Form.Item label="确认密码" name="confirmPassword" required><Input.Password autoComplete="new-password" /></Form.Item>}<Button type="primary" htmlType="submit">{mode === 'login' ? '登录' : '注册'}</Button><div style={{ marginTop: 16 }}>{mode === 'login' ? <>还没有账号？<Link to="/register">去注册</Link></> : <>已有账号？<Link to="/login">去登录</Link></>}</div></Form></main>;
+  return <main className={styles.page}>
+    <section className={`${styles.card} tc-card`}>
+      <div className={styles.hero}>
+        <span className={styles.logo} aria-hidden>学</span>
+        <h1 className={styles.title}>学习打卡</h1>
+        <p className={styles.subtitle}>{mode === 'login' ? '登录账号，继续今日打卡' : '创建账号，开始坚持打卡'}</p>
+      </div>
+      {error && <Alert role="alert" message={error} type="error" style={{ marginBottom: 16 }} />}
+      <Form form={form} layout="vertical" onFinish={submit} requiredMark>
+        <Form.Item label="邮箱" name="email" required><Input autoComplete="email" /></Form.Item>
+        <Form.Item label="密码" name="password" required><Input.Password autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></Form.Item>
+        {mode === 'register' && <Form.Item label="确认密码" name="confirmPassword" required><Input.Password autoComplete="new-password" /></Form.Item>}
+        <Button className={styles.submit} type="primary" htmlType="submit">{mode === 'login' ? '登录' : '注册'}</Button>
+      </Form>
+      <div className={styles.switch}>{mode === 'login' ? <>还没有账号？<Link to="/register">去注册</Link></> : <>已有账号？<Link to="/login">去登录</Link></>}</div>
+    </section>
+  </main>;
 }
 
 export function LoginPage() { return <AuthForm mode="login" />; }
@@ -62,5 +79,5 @@ export function ProtectedRoute() {
 export function AuthenticatedHome() {
   const { state, setState } = useAuth();
   const navigate = useNavigate();
-  return <main><Typography.Title>今日学习</Typography.Title><p>{state.status === 'authenticated' ? state.user.email : ''}</p><Button onClick={() => authApi.logout().finally(() => { setState({ status: 'anonymous' }); navigate('/login', { replace: true }); })}>登出</Button></main>;
+  return <main><h1>今日学习</h1><p>{state.status === 'authenticated' ? state.user.email : ''}</p><Button onClick={() => authApi.logout().finally(() => { setState({ status: 'anonymous' }); navigate('/login', { replace: true }); })}>登出</Button></main>;
 }
