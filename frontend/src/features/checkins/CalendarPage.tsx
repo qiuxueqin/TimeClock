@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Button, Card, DatePicker, Drawer, Empty, Form, Input, Select, Skeleton, Spin, Tag, Typography, message,
+  Alert, Button, DatePicker, Drawer, Empty, Form, Input, Select, Skeleton, Spin, Tag, Typography, message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { checkinApi, taskApi, type CalendarDay, type CheckinView } from '@/api/client';
+import styles from './CalendarPage.module.css';
 
 /** 状态展示：文字 + 颜色共同表达（可访问性），图标作为第三通道。 */
 export const CHECKIN_STATUS_META: Record<CalendarDay['status'], { label: string; color: string; icon: string }> = {
@@ -24,7 +25,7 @@ const FILTER_OPTIONS = [
 ];
 
 /** 补打资格由后端裁决；前端仅对窗口内 missed/partial 提供入口，最终以提交结果为准。 */
-function isMakeupCandidate(day: CalendarDay, today: Dayjs): boolean {
+function isMakeupCandidate(day: Pick<CalendarDay, 'date' | 'status'>, today: Dayjs): boolean {
   if (day.status !== 'missed' && day.status !== 'partial') return false;
   const d = dayjs(day.date);
   return d.isBefore(today, 'day') && d.isAfter(today.subtract(4, 'day'));
@@ -86,9 +87,9 @@ export function CalendarPage() {
       isMakeupCandidate({ date: detailData.checkinDate, status: detailData.status }, today));
 
   return (
-    <main data-testid="calendar-page" style={{ padding: 24, maxWidth: 960, margin: '0 auto' }}>
+    <main data-testid="calendar-page" className={styles.page}>
       <Typography.Title level={2} style={{ marginBottom: 16 }}>打卡日历</Typography.Title>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+      <div className={`${styles.toolbar} tc-card`}>
         <DatePicker picker="month" value={dayjs(month)} allowClear={false}
           onChange={(value) => value && setMonth(value.format('YYYY-MM'))} aria-label="选择月份" />
         <Select value={selectedTaskId ?? undefined} onChange={(value) => setSelectedTaskId(value)}
@@ -106,16 +107,19 @@ export function CalendarPage() {
         <Empty description="本月暂无打卡记录" style={{ marginTop: 32 }} />
       )}
       {days.length > 0 && (
-        <Card size="small" styles={{ body: { padding: 8 } }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+        <section className={`${styles.calendarCard} tc-card`} aria-label="月历网格">
+          <div className={styles.weekRow} aria-hidden>
             {['日', '一', '二', '三', '四', '五', '六'].map((w) => (
-              <div key={w} style={{ textAlign: 'center', fontWeight: 600 }}>{w}</div>
+              <span key={w} className={styles.weekday}>{w}</span>
             ))}
-            {Array.from({ length: leadingBlanks }).map((_, i) => <div key={`b${i}`} />)}
+          </div>
+          <div className={styles.grid}>
+            {Array.from({ length: leadingBlanks }).map((_, i) => <span key={`b${i}`} />)}
             {Array.from({ length: cellCount - leadingBlanks }, (_, i) => firstDay.date(i + 1)).map((d) => {
               const key = d.format('YYYY-MM-DD');
               const day = daysByDate.get(key);
               const meta = CHECKIN_STATUS_META[day?.status ?? 'noPlan'];
+              const isToday = d.isSame(today, 'day');
               return (
                 <button
                   key={key}
@@ -123,18 +127,20 @@ export function CalendarPage() {
                   data-testid="calendar-day"
                   data-date={key}
                   data-status={day?.status ?? 'empty'}
+                  title={day ? `${key} ${meta.label}` : key}
                   onClick={() => { setDetailDate(key); }}
-                  style={{
-                    border: '1px solid #f0f0f0', borderRadius: 6, minHeight: 56, cursor: 'pointer',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    justifyContent: 'center', gap: 2, background: '#fff', padding: 2,
-                  }}
+                  className={[
+                    styles.dayCell,
+                    day ? styles[`status-${day.status}`] : '',
+                    isToday ? styles.today : '',
+                  ].filter(Boolean).join(' ')}
                 >
-                  <span>{d.date()}</span>
+                  <span className={styles.dayNumber}>{d.date()}</span>
                   {day && (
-                    <span>
+                    <span className={styles.dayStatus}>
+                      <span className={`${styles.dot} ${styles[`dot-${day.status}`]}`} aria-hidden />
                       <span aria-hidden>{meta.icon}</span>
-                      <Tag color={meta.color} style={{ marginLeft: 2, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+                      <Tag color={meta.color} style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px', borderRadius: 4 }}>
                         {meta.label}
                       </Tag>
                     </span>
@@ -143,7 +149,17 @@ export function CalendarPage() {
               );
             })}
           </div>
-        </Card>
+          <div className={styles.legend} aria-label="状态图例">
+            {(['completed', 'partial', 'missed', 'makeup'] as const).map((status) => (
+              <span key={status} className={styles.legendItem}>
+                <span className={`${styles.legendSwatch} ${styles[`swatch-${status}`]}`}>
+                  <span className={`${styles.dot} ${styles[`dot-${status}`]}`} style={{ position: 'absolute', top: -2, right: -2 }} aria-hidden />
+                </span>
+                {CHECKIN_STATUS_META[status].label}
+              </span>
+            ))}
+          </div>
+        </section>
       )}
       <Drawer
         title={detailDate ? `${detailDate} 打卡详情` : ''}
@@ -161,28 +177,36 @@ export function CalendarPage() {
         )}
         {selectedTaskId && detailData && (
           <>
-            <Typography.Paragraph>
-              状态：
-              <Tag color={CHECKIN_STATUS_META[detailData.status].color}>
-                {CHECKIN_STATUS_META[detailData.status].label}
-              </Tag>
-            </Typography.Paragraph>
+            <div className={styles.detailSection}>
+              <div className={styles.detailLabel}>状态</div>
+              <div className={styles.detailValue}>
+                <Tag color={CHECKIN_STATUS_META[detailData.status].color}>
+                  {CHECKIN_STATUS_META[detailData.status].icon} {CHECKIN_STATUS_META[detailData.status].label}
+                </Tag>
+              </div>
+            </div>
             {detailData.plannedCount != null && (
-              <Typography.Paragraph>
-                进度：{detailData.completedCount ?? 0}/{detailData.plannedCount}
-              </Typography.Paragraph>
+              <div className={styles.detailSection}>
+                <div className={styles.detailLabel}>进度</div>
+                <div className={styles.detailValue}>{detailData.completedCount ?? 0}/{detailData.plannedCount}</div>
+              </div>
             )}
             {detailData.makeupReason && (
-              <Typography.Paragraph>补打原因：{detailData.makeupReason}</Typography.Paragraph>
+              <div className={styles.detailSection}>
+                <blockquote className={styles.reasonBlock}>补打原因：{detailData.makeupReason}</blockquote>
+              </div>
             )}
             {detailData.solutionSummary && (
-              <Typography.Paragraph>题解摘要：{detailData.solutionSummary}</Typography.Paragraph>
+              <div className={styles.detailSection}>
+                <div className={styles.detailLabel}>题解摘要</div>
+                <Typography.Paragraph>{detailData.solutionSummary}</Typography.Paragraph>
+              </div>
             )}
             {(detailData.status === 'makeup') && (
               <Alert type="info" message="该日期已补打，记录不可修改或撤销" style={{ marginTop: 12 }} />
             )}
             {canMakeup && (
-              <Form form={form} layout="vertical" style={{ marginTop: 12 }} onFinish={submitMakeup}>
+              <Form form={form} layout="vertical" style={{ marginTop: 20 }} onFinish={submitMakeup}>
                 <Alert
                   type="warning" showIcon style={{ marginBottom: 12 }}
                   message="补打计入完成率，但不计入连续打卡天数，也无法撤销"
@@ -196,7 +220,7 @@ export function CalendarPage() {
                 >
                   <Input.TextArea rows={3} maxLength={500} placeholder="例如：出差未带电脑" data-testid="makeup-reason" />
                 </Form.Item>
-                <Button type="primary" htmlType="submit" loading={makeup.isPending} danger>
+                <Button type="primary" htmlType="submit" loading={makeup.isPending} danger block>
                   确认补打
                 </Button>
               </Form>

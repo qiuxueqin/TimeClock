@@ -1,0 +1,167 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.calendarCard {
+  padding: 18px 16px;
+}
+
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.dayCell {
+  position: relative;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  min-height: 64px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 2px;
+  background: transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.dayCell:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 状态底色：三通道之一（背景） */
+.status-completed {
+  background: var(--status-completed-bg);
+}
+.status-partial {
+  background: var(--status-partial-bg);
+}
+.status-missed {
+  background: var(--status-missed-bg);
+}
+.status-makeup {
+  background: var(--status-makeup-bg);
+}
+
+.today {
+  border-color: var(--brand-purple);
+}
+
+.dayNumber {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.dayStatus {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-completed { background: var(--status-completed-dot); }
+.dot-partial { background: var(--status-partial-dot); }
+.dot-missed { background: var(--status-missed-dot); }
+.dot-makeup { background: var(--status-makeup-dot); }
+
+/* ===== 图例 ===== */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  justify-content: center;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendSwatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 5px;
+  display: inline-block;
+}
+
+.swatch-completed { background: var(--status-completed-bg); position: relative; }
+.swatch-partial { background: var(--status-partial-bg); position: relative; }
+.swatch-missed { background: var(--status-missed-bg); position: relative; }
+.swatch-makeup { background: var(--status-makeup-bg); position: relative; }
+
+/* 图例小圆点复用 .dot */
+
+/* ===== Drawer 详情 ===== */
+.detailSection {
+  margin-bottom: 20px;
+}
+
+.detailLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.detailValue {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.reasonBlock {
+  border-left: 3px solid var(--status-makeup-dot);
+  background: var(--brand-soft);
+  padding: 10px 12px;
+  border-radius: 0 8px 8px 0;
+  color: var(--text-primary);
+}
+
+@media (max-width: 479px) {
+  .dayCell {
+    min-height: 52px;
+  }
+
+  .dayStatus :global(.ant-tag) {
+    display: none; /* 极窄屏隐藏文字标签，保留底色+图标通道 */
+  }
+}

@@ -1,0 +1,58 @@
+.page {
+  max-width: 640px;
+}
+
+.header {
+  margin-bottom: 18px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.section {
+  padding: 20px 24px 8px;
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.sectionIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand-purple);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.footer .submitBtn {
+  min-width: 120px;
+}
