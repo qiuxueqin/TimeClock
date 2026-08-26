@@ -1,4 +1,54 @@
-/* 全局基础样式（S0-FE-01 骨架）。 */
+/* 全局基础样式与主题变量（UI 改版）。 */
+
+:root {
+  --bg-layout: #f5f6fb;
+  --bg-card: #ffffff;
+  --border: #ecedf4;
+  --shadow-card: 0 1px 3px rgba(80, 80, 140, 0.08);
+  --shadow-card-hover: 0 4px 16px rgba(80, 80, 140, 0.14);
+  --text-primary: #24263a;
+  --text-secondary: #5a5d73;
+  --text-tertiary: #9093ab;
+  --brand-purple: #7666f0;
+  --brand-sky: #4da8f5;
+  --brand-gradient: linear-gradient(135deg, #8b7cf6 0%, #4da8f5 100%);
+  --brand-soft: rgba(118, 102, 240, 0.08);
+  /* 状态色（亮色底/深色字，用于日历单元格、状态竖条） */
+  --status-completed-bg: #e8f7ef;
+  --status-completed-dot: #34a46f;
+  --status-partial-bg: #fdf1e2;
+  --status-partial-dot: #e6922c;
+  --status-missed-bg: #fdeceb;
+  --status-missed-dot: #e05247;
+  --status-makeup-bg: #f3edfd;
+  --status-makeup-dot: #9b6ce0;
+  --status-noplan-bg: transparent;
+  --status-noplan-dot: #c6c8d8;
+}
+
+html[data-theme='dark'] {
+  --bg-layout: #13141c;
+  --bg-card: #1c1d27;
+  --border: rgba(255, 255, 255, 0.08);
+  --shadow-card: none;
+  --shadow-card-hover: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --text-primary: #e8e9f2;
+  --text-secondary: #a5a8bf;
+  --text-tertiary: #6d7089;
+  --brand-purple: #9083ff;
+  --brand-sky: #5bb6ff;
+  --brand-soft: rgba(144, 131, 255, 0.14);
+  --status-completed-bg: rgba(52, 164, 111, 0.18);
+  --status-completed-dot: #4cbf85;
+  --status-partial-bg: rgba(230, 146, 44, 0.16);
+  --status-partial-dot: #f0a94f;
+  --status-missed-bg: rgba(224, 82, 71, 0.18);
+  --status-missed-dot: #ee7a70;
+  --status-makeup-bg: rgba(155, 108, 224, 0.2);
+  --status-makeup-dot: #b892ec;
+  --status-noplan-dot: #4a4c60;
+}
+
 html,
 body,
 #root {
@@ -12,4 +62,24 @@ body {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
+  background: var(--bg-layout);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease;
+}
+
+/* 通用卡片外观：页面内以 .tc-card 标记的容器统一质感。 */
+.tc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+::selection {
+  background: rgba(118, 102, 240, 0.25);
+}
+
+/* 细滚动条，贴合清新风格 */
+* {
+  scrollbar-width: thin;
 }
