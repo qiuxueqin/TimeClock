@@ -160,3 +160,13 @@
   gap: 8px;
   flex-shrink: 0;
 }
+
+.noPlanHint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.noPlanHint a {
+  color: var(--brand-sky);
+  margin: 0 2px;
+}

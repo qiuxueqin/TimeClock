@@ -102,7 +102,13 @@ export function TodayPage() {
           <Link to="/tasks/new"><Button type="primary">创建任务</Button></Link>
         </Empty>
       )}
-      {hasTasks && scheduled.length === 0 && <Empty description="今天没有计划任务" style={{ marginTop: 32 }} />}
+      {hasTasks && scheduled.length === 0 && (
+        <Empty description="今天没有计划任务" style={{ marginTop: 32 }}>
+          <span className={styles.noPlanHint}>
+            今天不在任何任务的计划日内。<Link to="/tasks">管理任务</Link>或<Link to="/calendar">查看打卡日历</Link>
+          </span>
+        </Empty>
+      )}
       {scheduled.length > 0 && (
         <section aria-label="今日任务">
           <div className={styles.sectionHeader}>

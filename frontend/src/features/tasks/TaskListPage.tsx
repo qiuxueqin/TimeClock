@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Empty, Modal, Pagination, Progress, Select, Tag, message } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { taskApi, type TaskStatus, type TaskView } from '@/api/client';
 import { useState } from 'react';
@@ -77,7 +78,12 @@ export function TaskListPage() {
   return (
     <main>
       <div className={styles.header}>
-        <h1 className={styles.title}>任务管理</h1>
+        <div>
+          <Link to="/today" className={styles.backLink} aria-label="返回今日页">
+            <ArrowLeftOutlined /> 今日
+          </Link>
+          <h1 className={styles.title}>任务管理</h1>
+        </div>
         <Button type="primary" onClick={() => navigate('/tasks/new')}>创建任务</Button>
       </div>
       <div className={styles.filterRow}>
@@ -87,8 +93,10 @@ export function TaskListPage() {
           style={{ width: 140 }} />
       </div>
       {data.items.length === 0 && (
-        <Empty description="还没有任务" style={{ marginTop: 48 }}>
-          <Button type="primary" onClick={() => navigate('/tasks/new')}>创建第一个任务</Button>
+        <Empty description={status ? '暂无该状态的任务' : '还没有任务'} style={{ marginTop: 48 }}>
+          {status
+            ? <Button onClick={() => { setStatus(undefined); setPage(1); }}>查看全部任务</Button>
+            : <Button type="primary" onClick={() => navigate('/tasks/new')}>创建第一个任务</Button>}
         </Empty>
       )}
       {data.items.length > 0 && (

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Input, Progress, Tag, message } from 'antd';
-import { CheckCircleFilled } from '@ant-design/icons';
+import { ArrowLeftOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { itemApi, submissionApi, type ItemView } from '@/api/client';
@@ -72,8 +72,17 @@ export function ItemPage() {
   return (
     <main className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>{isToday ? '今日条目' : '学习条目'}</h1>
-        {!isToday && <Link to={`/tasks/${taskId}/import`}>导入文件</Link>}
+        <div className={styles.headerLeft}>
+          <Link to="/tasks" className={styles.backLink} aria-label="返回任务列表">
+            <ArrowLeftOutlined /> 任务列表
+          </Link>
+          <h1 className={styles.title}>{isToday ? '今日条目' : '学习条目'}</h1>
+        </div>
+        <span className={styles.headerActions}>
+          {!isToday && <Link to={`/tasks/${taskId}/today`}>今日条目</Link>}
+          {!isToday && <Link to={`/tasks/${taskId}/import`}>导入文件</Link>}
+          {isToday && <Link to={`/tasks/${taskId}/items`}>全部条目</Link>}
+        </span>
       </div>
 
       {isToday && today.data && (
@@ -110,7 +119,7 @@ export function ItemPage() {
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>粘贴导入</span>
-          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>每行一个条目，预览确认后入库</span>
+          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>每行一个条目，预览确认后入库；批量题目可用 <Link to={`/tasks/${taskId}/import`}>xlsx 导入</Link></span>
         </div>
         <div className={`${styles.sectionBody} tc-card`} style={{ padding: '14px 16px' }}>
           <Input.TextArea aria-label="粘贴条目" rows={4} value={paste} onChange={(event) => setPaste(event.target.value)} placeholder={'每行一个条目'} />

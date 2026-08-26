@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Alert, Button, Empty, Tag, Upload, message } from 'antd';
-import { FileExcelOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { importApi } from '@/api/client';
 import styles from './ImportPage.module.css';
 
@@ -17,8 +17,13 @@ export function ImportPage() {
   });
   return <main className={styles.page}>
     <div className={styles.header}>
-      <h1 className={styles.title}>xlsx 导入</h1>
-      <p className={styles.subtitle}>上传解析后先预览，确认前不会写入正式条目</p>
+      <div className={styles.headerLeft}>
+        <Link to={`/tasks/${taskId}/items`} className={styles.backLink} aria-label="返回条目页">
+          <ArrowLeftOutlined /> 条目页
+        </Link>
+        <h1 className={styles.title}>xlsx 导入</h1>
+      </div>
+      <p className={styles.subtitle}>上传解析后先预览，确认前不会写入正式条目；导入完成后可在<Link to={`/tasks/${taskId}/items`}>条目页</Link>查看</p>
     </div>
     <div className={`${styles.uploadCard} tc-card`}>
       <Upload

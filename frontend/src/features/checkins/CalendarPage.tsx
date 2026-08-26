@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { checkinApi, taskApi, type CalendarDay, type CheckinView } from '@/api/client';
 import styles from './CalendarPage.module.css';
 
@@ -168,7 +169,12 @@ export function CalendarPage() {
         width={400}
       >
         {!selectedTaskId && (
-          <Alert type="info" showIcon message="请先在任务管理中打开具体任务的日历以查看详情与补打" />
+          <Alert
+            type="info" showIcon
+            message="当前为全部任务合并视图"
+            description="合并视图仅展示每日汇总状态。选择上方具体任务，或前往任务列表，即可查看某天的完成进度、题解摘要与补打入口。"
+            action={<Button size="small"><Link to="/tasks">去任务列表</Link></Button>}
+          />
         )}
         {selectedTaskId && detail.isPending && <Spin />}
         {selectedTaskId && detail.isError && (

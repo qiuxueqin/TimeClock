@@ -6,6 +6,20 @@
   margin-bottom: 18px;
 }
 
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+
+.backLink:hover {
+  color: var(--brand-purple);
+}
+
 .title {
   font-size: 24px;
   font-weight: 700;
@@ -51,6 +65,12 @@
   display: flex;
   gap: 12px;
   margin-top: 4px;
+  align-items: center;
+}
+
+.footerHint {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .footer .submitBtn {

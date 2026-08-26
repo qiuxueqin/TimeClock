@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, DatePicker, Form, Input, InputNumber } from 'antd';
-import { CalendarOutlined, ProfileOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, CalendarOutlined, ProfileOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { taskApi, type TaskCreateRequest } from '@/api/client';
 import { taskFormSchema } from './taskFormSchema';
 import { useEffect, useState } from 'react';
@@ -19,6 +19,9 @@ export function TaskFormPage() {
   if (editing && detail.isError) return <main className={styles.page}><Alert type="error" message={detail.error.message} /><Button onClick={() => navigate('/tasks')}>返回任务列表</Button></main>;
   return <main className={styles.page}>
     <div className={styles.header}>
+      <Link to="/tasks" className={styles.backLink} aria-label="返回任务列表">
+        <ArrowLeftOutlined /> 任务列表
+      </Link>
       <h1 className={styles.title}>{editing ? '编辑任务' : '创建任务'}</h1>
       <p className={styles.subtitle}>清单型任务：每天按目标完成题目，自动打卡记录连续天数</p>
     </div>
@@ -45,6 +48,7 @@ export function TaskFormPage() {
       <div className={styles.footer}>
         <Button className={styles.submitBtn} type="primary" htmlType="submit" loading={mutation.isPending}>{editing ? '保存' : '创建'}</Button>
         <Button onClick={() => navigate('/tasks')}>取消</Button>
+        {!editing && <span className={styles.footerHint}>创建后可在任务卡片中录入条目并启用</span>}
       </div>
     </Form>
   </main>;

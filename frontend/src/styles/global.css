@@ -1,5 +1,12 @@
 /* 全局基础样式与主题变量（UI 改版）。 */
 
+/* antd v5 不再自动注入 reset；无此重置时固定宽度侧边栏会因 padding 溢出声明宽度，压住内容区 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   --bg-layout: #f5f6fb;
   --bg-card: #ffffff;
